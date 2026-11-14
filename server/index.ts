@@ -433,11 +433,59 @@ app.delete('/api/admin/departments/:id', async (req, res) => {
 
 /**
  * List all users (Sanitized - raw passwords are never returned)
+ * Discovers accounts from in-memory store and live departments.
  */
-app.get('/api/admin/users', (_req, res) => {
+app.get('/api/admin/users', async (_req, res) => {
+  const userMap = new Map<string, any>();
+
+  // 1. Seed with in-memory users
+  for (const u of inMemoryUsers) {
+    const { password: _, ...safeUser } = u;
+    userMap.set(u.email.toLowerCase(), safeUser);
+  }
+
+  // 2. Discover managers and leads from live database departments
+  if (URBACKEND_SECRET_KEY && URBACKEND_SECRET_KEY.startsWith('sk_live_')) {
+    try {
+      const liveDepts = await serverUrClient.db.getAll('departments');
+      if (Array.isArray(liveDepts)) {
+        for (const dept of liveDepts) {
+          const email = (dept.manager_email || dept.managerEmail || '').trim().toLowerCase();
+          if (email && !userMap.has(email)) {
+            const fullName = (dept.manager_name || dept.managerName || 'Manager').trim();
+            const parts = fullName.split(' ');
+            const firstName = parts[0] || 'Department';
+            const lastName = parts.slice(1).join(' ') || 'Lead';
+            const username = email.split('@')[0].replace(/[^a-z0-9_]/g, '_');
+
+            const discoveredUser = {
+              id: `user_dept_${dept._id || dept.id}`,
+              auth_id: `auth_dept_${dept._id || dept.id}`,
+              firstName,
+              lastName,
+              username,
+              email,
+              phoneNumber: '+91 9876543210',
+              role: 'manager',
+              departmentId: dept._id || dept.id,
+              departmentName: dept.name,
+              status: 'active',
+              createdAt: dept.createdAt || dept.created_at || new Date().toISOString(),
+              updatedAt: dept.updatedAt || dept.updated_at || new Date().toISOString(),
+            };
+
+            userMap.set(email, discoveredUser);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error discovering users from live departments:', err);
+    }
+  }
+
   res.json({
     success: true,
-    data: inMemoryUsers.map(({ password: _, ...safeUser }) => safeUser),
+    data: Array.from(userMap.values()),
   });
 });
 

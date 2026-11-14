@@ -92,11 +92,17 @@ export function DepartmentDialog({
               department.managerName.toLowerCase())
       )
 
+      const initialManagerUserId = matchingUser
+        ? matchingUser.id
+        : department.managerEmail && department.managerEmail.trim().length > 0
+          ? 'manual'
+          : 'none'
+
       form.reset({
         name: department.name,
         slug: department.slug,
         description: department.description || '',
-        managerUserId: matchingUser ? matchingUser.id : 'none',
+        managerUserId: initialManagerUserId,
         managerName: department.managerName || 'Unassigned',
         managerEmail: department.managerEmail || '',
       })
@@ -234,6 +240,10 @@ export function DepartmentDialog({
                       if (val === 'none') {
                         form.setValue('managerName', 'Unassigned')
                         form.setValue('managerEmail', '')
+                      } else if (val === 'manual') {
+                        if (form.getValues('managerName') === 'Unassigned') {
+                          form.setValue('managerName', '')
+                        }
                       } else {
                         const selectedUser = users.find((u) => u.id === val)
                         if (selectedUser) {
@@ -255,6 +265,9 @@ export function DepartmentDialog({
                       <SelectItem value='none'>
                         <span className='text-muted-foreground'>Unassigned (No manager)</span>
                       </SelectItem>
+                      <SelectItem value='manual'>
+                        <span className='font-medium text-primary'>+ Enter name & email manually</span>
+                      </SelectItem>
                       {users.map((u) => (
                         <SelectItem key={u.id} value={u.id}>
                           <span className='font-medium text-foreground'>
@@ -267,7 +280,49 @@ export function DepartmentDialog({
                       ))}
                     </SelectContent>
                   </Select>
-                  {currentManagerEmail && currentManagerEmail.length > 0 && (
+
+                  {/* Manual name & email inputs if manual selection is chosen */}
+                  {field.value === 'manual' && (
+                    <div className='grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2'>
+                      <FormField
+                        control={form.control}
+                        name='managerName'
+                        render={({ field: nameField }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>Manager Full Name</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder='e.g. Rajesh Sharma'
+                                className='h-8 text-xs'
+                                {...nameField}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name='managerEmail'
+                        render={({ field: emailField }) => (
+                          <FormItem>
+                            <FormLabel className='text-xs'>Manager Email Address</FormLabel>
+                            <FormControl>
+                              <Input
+                                type='email'
+                                placeholder='e.g. manager@domain.com'
+                                className='h-8 text-xs'
+                                {...emailField}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  )}
+
+                  {field.value !== 'manual' && currentManagerEmail && currentManagerEmail.length > 0 && (
                     <div className='rounded-md border border-border/80 bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground'>
                       Assigned Lead: <strong className='text-foreground'>{currentManagerName}</strong> ({currentManagerEmail})
                     </div>
