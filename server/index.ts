@@ -253,6 +253,7 @@ app.get('/r/:shortCode', async (req, res) => {
           await serverUrClient.db
             .patch('qr_codes', targetId, {
               total_scans: newCount,
+              last_scanned_at: new Date().toISOString(),
             })
             .catch(() => {});
         } catch (err) {
@@ -659,12 +660,25 @@ app.delete('/api/admin/users/:id', (req, res) => {
    QR CODE MANAGEMENT & DYNAMIC ROUTING APIS
    ========================================================================== */
 
+function getPublicBaseUrl(req: express.Request): string {
+  if (process.env.REDIRECT_BASE_URL) {
+    return process.env.REDIRECT_BASE_URL.replace(/\/$/, '');
+  }
+  if (process.env.RENDER_EXTERNAL_URL) {
+    return process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '');
+  }
+  const host = req.get('host') || `localhost:${PORT}`;
+  const proto = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
+  return `${proto}://${host}`.replace(/\/$/, '');
+}
+
 /**
  * List QR codes (urBackend Database backed with offline fallback)
  */
 app.get('/api/admin/qr-codes', async (req, res) => {
   const isTrash = req.query.trash === 'true';
   const { departmentId, category, search } = req.query;
+  const baseUrl = getPublicBaseUrl(req);
 
   let results: any[] = inMemoryQrCodes;
 
@@ -672,26 +686,32 @@ app.get('/api/admin/qr-codes', async (req, res) => {
     try {
       const liveQrs = await serverUrClient.db.getAll('qr_codes');
       if (Array.isArray(liveQrs)) {
-        results = liveQrs.map((q: any) => ({
-          id: q._id || q.id,
-          name: q.name,
-          category: q.category || 'dynamic',
-          type: q.type || 'dynamic_url',
-          short_code: q.short_code,
-          short_url: q.short_url,
-          destination_url: q.destination_url,
-          department_id: q.department_id,
-          department_name: q.department_name,
-          status: q.status || 'active',
-          total_scans: Number(q.total_scans || 0),
-          unique_visitors: Number(q.unique_visitors || 0),
-          last_scanned_at: q.last_scanned_at || null,
-          isDeleted: Boolean(q.isDeleted || q.status === 'archived'),
-          deletedAt: q.deletedAt || null,
-          donation_config: q.donation_config,
-          created_at: q.created_at || q.createdAt || new Date().toISOString(),
-          updated_at: q.updated_at || q.updatedAt || new Date().toISOString(),
-        }));
+        results = liveQrs.map((q: any) => {
+          let resolvedShortUrl = q.short_url;
+          if (!resolvedShortUrl || resolvedShortUrl.includes('localhost')) {
+            resolvedShortUrl = `${baseUrl}/r/${q.short_code}`;
+          }
+          return {
+            id: q._id || q.id,
+            name: q.name,
+            category: q.category || 'dynamic',
+            type: q.type || 'dynamic_url',
+            short_code: q.short_code,
+            short_url: resolvedShortUrl,
+            destination_url: q.destination_url,
+            department_id: q.department_id,
+            department_name: q.department_name,
+            status: q.status || 'active',
+            total_scans: Number(q.total_scans || 0),
+            unique_visitors: Number(q.unique_visitors || 0),
+            last_scanned_at: q.last_scanned_at || null,
+            isDeleted: Boolean(q.isDeleted || q.status === 'archived'),
+            deletedAt: q.deletedAt || null,
+            donation_config: q.donation_config,
+            created_at: q.created_at || q.createdAt || new Date().toISOString(),
+            updated_at: q.updated_at || q.updatedAt || new Date().toISOString(),
+          };
+        });
       }
     } catch (err) {
       console.error('Error fetching qr_codes from urBackend:', err);
@@ -773,7 +793,8 @@ app.post('/api/admin/qr-codes', async (req, res) => {
     (isDynamic ? Math.random().toString(36).substring(2, 8) : `sq_${Math.random().toString(36).substring(2, 8)}`)
   ).toLowerCase();
 
-  const shortUrl = `http://localhost:3001/r/${shortCode}`;
+  const baseUrl = getPublicBaseUrl(req);
+  const shortUrl = `${baseUrl}/r/${shortCode}`;
 
   // Format donation_config according to schema
   let formattedDonationConfig: any = undefined;
@@ -1001,28 +1022,33 @@ app.get('/api/admin/analytics/summary', async (req, res) => {
 
     // Try fetching from urBackend if configured
     let allScans: any[] = inMemoryScans;
+    let liveQrList: any[] = inMemoryQrCodes;
+    let liveDeptList: any[] = inMemoryDepartments;
+
     if (URBACKEND_SECRET_KEY && URBACKEND_SECRET_KEY.startsWith('sk_live_')) {
       try {
-        const filterQuery: any = {
-          scanned_at: { $gte: startDate.toISOString() },
-        };
-        if (departmentId && departmentId !== 'all') {
-          filterQuery.department_id = departmentId;
-        }
-        if (qrCodeId && qrCodeId !== 'all') {
-          filterQuery.qr_code_id = qrCodeId;
-        }
-        const resp = await fetch(
-          `${URBACKEND_BASE_URL}/api/data/qr_scans?filter=${encodeURIComponent(
-            JSON.stringify(filterQuery)
-          )}&limit=10000`,
-          { headers: { 'x-api-key': URBACKEND_SECRET_KEY } }
-        );
-        const result = await resp.json();
-        if (Array.isArray(result)) {
-          allScans = result;
+        const [scansResp, qrsData, deptsData] = await Promise.all([
+          fetch(`${URBACKEND_BASE_URL}/api/data/qr_scans?limit=10000`, {
+            headers: { 'x-api-key': URBACKEND_SECRET_KEY },
+          }),
+          serverUrClient.db.getAll('qr_codes').catch(() => []),
+          serverUrClient.db.getAll('departments').catch(() => []),
+        ]);
+
+        const result = await scansResp.json();
+        if (result && result.data && Array.isArray(result.data.items)) {
+          allScans = result.data.items;
         } else if (result && Array.isArray(result.data)) {
           allScans = result.data;
+        } else if (Array.isArray(result)) {
+          allScans = result;
+        }
+
+        if (Array.isArray(qrsData) && qrsData.length > 0) {
+          liveQrList = qrsData;
+        }
+        if (Array.isArray(deptsData) && deptsData.length > 0) {
+          liveDeptList = deptsData;
         }
       } catch (err) {
         console.error('urBackend analytics fetch error, falling back to in-memory:', err);
@@ -1037,7 +1063,7 @@ app.get('/api/admin/analytics/summary', async (req, res) => {
       if (departmentId && departmentId !== 'all') {
         const scanDept =
           scan.department_id ||
-          inMemoryQrCodes.find((q) => q.id === scan.qr_code_id)?.department_id;
+          liveQrList.find((q: any) => (q._id || q.id) === scan.qr_code_id)?.department_id;
         if (scanDept !== departmentId) return false;
       }
 
@@ -1169,7 +1195,9 @@ app.get('/api/admin/analytics/summary', async (req, res) => {
     // Top QR Codes list
     const topQrs = Object.entries(qrScanMap)
       .map(([qrId, data]) => {
-        const qr = inMemoryQrCodes.find((q) => q.id === qrId || q.short_code === qrId);
+        const qr = liveQrList.find(
+          (q: any) => (q._id || q.id) === qrId || q.id === qrId || q.short_code === qrId
+        );
         return {
           id: qrId,
           name: qr?.name || `QR Code (${qrId.substring(0, 8)})`,
@@ -1187,7 +1215,7 @@ app.get('/api/admin/analytics/summary', async (req, res) => {
     // Top Departments
     const topDepartments = Object.entries(deptScanMap)
       .map(([deptId, scans]) => {
-        const dept = inMemoryDepartments.find((d) => d.id === deptId);
+        const dept = liveDeptList.find((d: any) => (d._id || d.id) === deptId || d.id === deptId);
         return {
           id: deptId,
           name: dept?.name || deptId,
@@ -1203,7 +1231,7 @@ app.get('/api/admin/analytics/summary', async (req, res) => {
           totalScans,
           uniqueVisitors,
           mobileShare,
-          activeQrsCount: inMemoryQrCodes.filter((q) => !q.isDeleted && q.status === 'active')
+          activeQrsCount: liveQrList.filter((q: any) => !q.isDeleted && q.status === 'active')
             .length,
         },
         timeSeries: timeSeriesData,
