@@ -1350,6 +1350,18 @@ app.post('/api/admin/analytics/simulate-scan', (req, res) => {
   });
 });
 
+// Production: Serve static client build (SPA mode)
+const distPath = path.resolve(process.cwd(), 'dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/r/')) {
+      return next();
+    }
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
 app.listen(PORT, () => {
   console.log(`[Redirect & Security Engine] Running on http://localhost:${PORT}`);
   console.log(`[Redirect & Security Engine] Dynamic QR route: http://localhost:${PORT}/r/:shortCode`);
