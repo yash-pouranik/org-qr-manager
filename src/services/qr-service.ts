@@ -1,3 +1,5 @@
+import { apiUrl } from '@/lib/api-client'
+
 export interface QrCodeItem {
   id: string
   name: string
@@ -59,7 +61,7 @@ export const qrService = {
       if (params?.category) q.append('category', params.category)
       if (params?.search) q.append('search', params.search)
 
-      const url = `/api/admin/qr-codes${q.toString() ? `?${q.toString()}` : ''}`
+      const url = apiUrl(`/api/admin/qr-codes${q.toString() ? `?${q.toString()}` : ''}`)
       const res = await fetch(url)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
@@ -95,7 +97,7 @@ export const qrService = {
   },
 
   async create(input: CreateQrInput): Promise<QrCodeItem> {
-    const res = await fetch('/api/admin/qr-codes', {
+    const res = await fetch(apiUrl('/api/admin/qr-codes'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -131,7 +133,7 @@ export const qrService = {
   },
 
   async update(id: string, input: UpdateQrInput): Promise<QrCodeItem> {
-    const res = await fetch(`/api/admin/qr-codes/${id}`, {
+    const res = await fetch(apiUrl(`/api/admin/qr-codes/${id}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -167,7 +169,7 @@ export const qrService = {
   },
 
   async restore(id: string): Promise<void> {
-    const res = await fetch(`/api/admin/qr-codes/${id}/restore`, {
+    const res = await fetch(apiUrl(`/api/admin/qr-codes/${id}/restore`), {
       method: 'POST',
     })
 
@@ -178,7 +180,7 @@ export const qrService = {
   },
 
   async delete(id: string, permanent = false): Promise<void> {
-    const res = await fetch(`/api/admin/qr-codes/${id}${permanent ? '?permanent=true' : ''}`, {
+    const res = await fetch(apiUrl(`/api/admin/qr-codes/${id}${permanent ? '?permanent=true' : ''}`), {
       method: 'DELETE',
     })
 
@@ -199,7 +201,7 @@ export const qrService = {
     }
   }> {
     try {
-      const res = await fetch(`/api/public/donation/${slug}`)
+      const res = await fetch(apiUrl(`/api/public/donation/${slug}`))
       if (!res.ok) throw new Error('Campaign not found')
       const json = await res.json()
       if (json && json.success) return json.data

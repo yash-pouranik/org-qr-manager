@@ -1,4 +1,5 @@
 import { Department, CreateDepartmentInput, UpdateDepartmentInput } from '@/types/department'
+import { apiUrl } from '@/lib/api-client'
 
 const FALLBACK_DEPARTMENTS: Department[] = [
   {
@@ -61,7 +62,7 @@ const FALLBACK_DEPARTMENTS: Department[] = [
 export const departmentService = {
   async getAll(): Promise<Department[]> {
     try {
-      const res = await fetch('/api/admin/departments')
+      const res = await fetch(apiUrl('/api/admin/departments'))
       if (!res.ok) throw new Error(`HTTP error ${res.status}`)
       const data = await res.json()
       if (data && data.success && Array.isArray(data.data)) {
@@ -74,7 +75,7 @@ export const departmentService = {
   },
 
   async create(input: CreateDepartmentInput): Promise<Department> {
-    const res = await fetch('/api/admin/departments', {
+    const res = await fetch(apiUrl('/api/admin/departments'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -89,7 +90,7 @@ export const departmentService = {
   },
 
   async update(id: string, input: UpdateDepartmentInput): Promise<Department> {
-    const res = await fetch(`/api/admin/departments/${id}`, {
+    const res = await fetch(apiUrl(`/api/admin/departments/${id}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -104,7 +105,7 @@ export const departmentService = {
   },
 
   async delete(id: string): Promise<{ success: boolean; message?: string }> {
-    const res = await fetch(`/api/admin/departments/${id}`, {
+    const res = await fetch(apiUrl(`/api/admin/departments/${id}`), {
       method: 'DELETE',
     })
 

@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { apiUrl } from '@/lib/api-client'
 
 export interface TimeSeriesPoint {
   date: string
@@ -66,7 +67,7 @@ export const analyticsService = {
       }
 
       const res = await axios.get<{ success: boolean; data: AnalyticsSummary }>(
-        `/api/admin/analytics/summary?${queryParams.toString()}`
+        apiUrl(`/api/admin/analytics/summary?${queryParams.toString()}`)
       )
       return res.data.data
     } catch (err) {
@@ -93,7 +94,7 @@ export const analyticsService = {
    */
   async simulateScans(count = 15, qrCodeId?: string): Promise<{ success: boolean; message: string }> {
     const res = await axios.post<{ success: boolean; message: string }>(
-      '/api/admin/analytics/simulate-scan',
+      apiUrl('/api/admin/analytics/simulate-scan'),
       { count, qrCodeId }
     )
     return res.data
@@ -103,7 +104,7 @@ export const analyticsService = {
    * Run custom MongoDB aggregation pipeline
    */
   async executePipeline(pipeline: any[]): Promise<any> {
-    const res = await axios.post('/api/admin/analytics/aggregate', { pipeline })
+    const res = await axios.post(apiUrl('/api/admin/analytics/aggregate'), { pipeline })
     return res.data
   },
 }

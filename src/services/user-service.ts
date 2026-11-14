@@ -1,5 +1,6 @@
 import { User } from '@/features/users/data/schema'
 import { users as fallbackUsers } from '@/features/users/data/users'
+import { apiUrl } from '@/lib/api-client'
 
 export interface CreateUserInput {
   firstName: string
@@ -24,7 +25,7 @@ export interface UpdateUserRoleInput {
 export const userService = {
   async getAll(): Promise<User[]> {
     try {
-      const res = await fetch('/api/admin/users')
+      const res = await fetch(apiUrl('/api/admin/users'))
       if (!res.ok) throw new Error(`HTTP error ${res.status}`)
       const json = await res.json()
       if (json && json.success && Array.isArray(json.data)) {
@@ -45,7 +46,7 @@ export const userService = {
       ...input,
       password: input.password || `Invite@${Math.floor(100000 + Math.random() * 900000)}`,
     }
-    const res = await fetch('/api/admin/users', {
+    const res = await fetch(apiUrl('/api/admin/users'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -64,7 +65,7 @@ export const userService = {
   },
 
   async updateRoleAndStatus(input: UpdateUserRoleInput): Promise<User> {
-    const res = await fetch('/api/admin/users/update-role', {
+    const res = await fetch(apiUrl('/api/admin/users/update-role'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -83,7 +84,7 @@ export const userService = {
   },
 
   async delete(id: string): Promise<{ success: boolean; message?: string }> {
-    const res = await fetch(`/api/admin/users/${id}`, {
+    const res = await fetch(apiUrl(`/api/admin/users/${id}`), {
       method: 'DELETE',
     })
 
