@@ -9,7 +9,6 @@ import {
   ArrowUpRight,
   ShieldCheck,
   Building2,
-  Smartphone,
   CheckCircle2,
   Inbox,
 } from 'lucide-react'
@@ -243,43 +242,63 @@ export function Dashboard() {
             </Card>
           </div>
 
-          {/* Right Column: Live Scan Activity Stream */}
+          {/* Right Column: Platform Quick Actions & Shortcuts */}
           <div className='lg:col-span-4 space-y-4'>
             <Card className='border-border/60 shadow-xs'>
               <CardHeader className='pb-3'>
-                <CardTitle className='text-base font-semibold flex items-center gap-2'>
-                  <Smartphone className='size-4 text-primary' />
-                  Redirection Gateway Status
-                </CardTitle>
+                <CardTitle className='text-base font-semibold'>Quick Operations</CardTitle>
                 <CardDescription className='text-xs'>
-                  Server-side HTTP 302 engine & privacy session hasher
+                  Direct shortcuts for core administrative tasks
                 </CardDescription>
               </CardHeader>
-              <CardContent className='space-y-3'>
-                <div className='rounded-lg bg-muted/40 p-3 space-y-2 text-xs'>
-                  <div className='flex justify-between'>
-                    <span className='text-muted-foreground'>Bot Screening:</span>
-                    <span className='font-medium text-emerald-600'>Active (User-Agent regex)</span>
-                  </div>
-                  <div className='flex justify-between'>
-                    <span className='text-muted-foreground'>Duplicate Window:</span>
-                    <span className='font-medium text-foreground'>5 minutes sliding</span>
-                  </div>
-                  <div className='flex justify-between'>
-                    <span className='text-muted-foreground'>Visitor Privacy:</span>
-                    <span className='font-medium text-foreground'>Daily Salted HMAC-SHA256</span>
-                  </div>
-                </div>
+              <CardContent className='space-y-2.5'>
+                <Button
+                  asChild
+                  variant='outline'
+                  size='sm'
+                  className='w-full justify-start gap-2 h-9 text-xs'
+                >
+                  <Link to='/qr-codes/create'>
+                    <Plus className='size-3.5 text-primary' />
+                    <span>Generate New QR Code</span>
+                  </Link>
+                </Button>
 
-                <div className='rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs'>
-                  <div className='flex items-center gap-2 text-foreground font-semibold'>
-                    <ShieldCheck className='size-4 text-primary' />
-                    <span>Synchronous Persistence</span>
-                  </div>
-                  <p className='text-[11px] text-muted-foreground mt-1'>
-                    Every scan is validated and stored before HTTP 302 redirection is issued.
-                  </p>
-                </div>
+                <Button
+                  asChild
+                  variant='outline'
+                  size='sm'
+                  className='w-full justify-start gap-2 h-9 text-xs'
+                >
+                  <Link to='/analytics'>
+                    <TrendingUp className='size-3.5 text-emerald-600' />
+                    <span>View Scan Analytics</span>
+                  </Link>
+                </Button>
+
+                <Button
+                  asChild
+                  variant='outline'
+                  size='sm'
+                  className='w-full justify-start gap-2 h-9 text-xs'
+                >
+                  <Link to='/departments'>
+                    <Building2 className='size-3.5 text-amber-600' />
+                    <span>Department Directory</span>
+                  </Link>
+                </Button>
+
+                <Button
+                  asChild
+                  variant='outline'
+                  size='sm'
+                  className='w-full justify-start gap-2 h-9 text-xs'
+                >
+                  <Link to='/users'>
+                    <ShieldCheck className='size-3.5 text-sky-600' />
+                    <span>User Governance & Access</span>
+                  </Link>
+                </Button>
               </CardContent>
             </Card>
           </div>
