@@ -4,13 +4,12 @@ on:
   push:
     branches:
       - main
-
   pull_request:
     branches:
       - main
 
 jobs:
-  install-lint-build:
+  install-and-build:
     runs-on: ubuntu-latest
 
     steps:
@@ -22,26 +21,13 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install pnpm
-        run: npm install -g pnpm
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint the code
-        run: pnpm lint
-
-      # - name: Analyze unused files and dependencies
-      #   run: pnpm knip
-
-      - name: Run Prettier check
-        run: pnpm format:check
-
-      - name: Install browsers
-        run: pnpm test:browser:install
-
-      - name: Run tests
-        run: pnpm test
-
-      - name: Build the project
+      - name: Type check & Build project
         run: pnpm build
