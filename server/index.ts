@@ -199,9 +199,9 @@ const inMemoryUsers: UserRecord[] = [
 ];
 
 /**
- * Health Check Endpoint
+ * Health Check Endpoints
  */
-app.get('/health', (_req, res) => {
+app.get(['/health', '/api/health'], (_req, res) => {
   res.json({
     status: 'healthy',
     service: 'organization-qr-redirect-service',
