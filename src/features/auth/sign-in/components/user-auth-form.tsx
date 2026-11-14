@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Loader2, LogIn, ShieldAlert } from 'lucide-react'
+import { Loader2, LogIn } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAppAuth } from '@/context/auth-context'
 import { cn } from '@/lib/utils'
@@ -62,12 +62,6 @@ export function UserAuthForm({
     }
   }
 
-  function handleQuickAdminLogin() {
-    form.setValue('email', 'admin@organization.local')
-    form.setValue('password', 'Admin@2026')
-    onSubmit({ email: 'admin@organization.local', password: 'Admin@2026' })
-  }
-
   return (
     <Form {...form}>
       <form
@@ -111,28 +105,6 @@ export function UserAuthForm({
         <Button className='mt-2 bg-primary text-primary-foreground hover:bg-primary/90' disabled={isLoading}>
           {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
           Sign in
-        </Button>
-
-        <div className='relative my-2'>
-          <div className='absolute inset-0 flex items-center'>
-            <span className='w-full border-t border-border' />
-          </div>
-          <div className='relative flex justify-center text-xs uppercase'>
-            <span className='bg-background px-2 text-muted-foreground'>
-              Development Quick Access
-            </span>
-          </div>
-        </div>
-
-        <Button
-          type='button'
-          variant='outline'
-          onClick={handleQuickAdminLogin}
-          disabled={isLoading}
-          className='w-full border-primary/30 text-xs font-medium text-primary hover:bg-primary/10'
-        >
-          <ShieldAlert className='size-3.5 me-1.5' />
-          Quick Sign In as Super Admin
         </Button>
       </form>
     </Form>

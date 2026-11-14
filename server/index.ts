@@ -440,30 +440,6 @@ app.get('/api/admin/users', (_req, res) => {
   });
 });
 
-/**
- * Verify user credentials for login
- */
-app.post('/api/admin/auth/verify', (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ success: false, error: 'Email and password are required' });
-  }
-
-  const user = inMemoryUsers.find(
-    (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-  );
-
-  if (!user) {
-    return res.status(401).json({ success: false, error: 'Invalid email or password' });
-  }
-
-  if (user.status === 'suspended') {
-    return res.status(403).json({ success: false, error: 'This user account is suspended' });
-  }
-
-  const { password: _, ...safeUser } = user;
-  res.json({ success: true, user: safeUser });
-});
 
 /**
  * Create user account with credentials

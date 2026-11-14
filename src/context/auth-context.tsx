@@ -120,65 +120,25 @@ export function AppAuthProvider({ children }: { children: React.ReactNode }) {
   const handleLogin = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true)
     try {
-      // 1. Try logging in with urBackend SDK
+      // Authenticate directly with urBackend Cloud Auth
       if (urAuth && typeof urAuth.login === 'function') {
         try {
           await urAuth.login({ email, password: pass })
           setIsLoading(false)
           return { success: true }
         } catch (urErr: any) {
-          console.warn('urBackend live auth failed or offline, evaluating fallback:', urErr?.message)
-        }
-      }
-
-      // 2. Local credential verification fallback
-      try {
-        const verifyResp = await fetch('/api/admin/auth/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password: pass }),
-        })
-        const verifyResult = await verifyResp.json()
-
-        if (verifyResp.ok && verifyResult.success && verifyResult.user) {
-          const u = verifyResult.user
-          const isSuperAdmin = u.email.toLowerCase() === INITIAL_SUPER_ADMIN_EMAIL.toLowerCase()
-          const verifiedProfile: UserProfile = {
-            auth_id: u.auth_id || u.id,
-            full_name:
-              `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.username || u.email.split('@')[0],
-            email: u.email,
-            role: isSuperAdmin ? 'super_admin' : u.role || 'member',
-            department_id: u.departmentId || null,
-            department_name:
-              u.departmentName || (isSuperAdmin ? 'All Departments' : 'Unassigned'),
-            status: u.status || 'active',
-            last_login: new Date().toISOString(),
+          setIsLoading(false)
+          return {
+            success: false,
+            error: urErr?.message || 'Invalid email or password',
           }
-
-          setProfile(verifiedProfile)
-          localStorage.setItem('org_user_profile', JSON.stringify(verifiedProfile))
-          auth.setAccessToken('local_dev_token_' + Date.now())
-          auth.setUser({
-            accountNo: verifiedProfile.auth_id,
-            email: verifiedProfile.email,
-            role: [verifiedProfile.role],
-            exp: Date.now() + 24 * 60 * 60 * 1000,
-          })
-
-          setIsLoading(false)
-          return { success: true }
-        } else {
-          setIsLoading(false)
-          return { success: false, error: verifyResult.error || 'Invalid email or password' }
         }
-      } catch (err: any) {
-        setIsLoading(false)
-        return { success: false, error: err?.message || 'Authentication server unreachable' }
       }
+      setIsLoading(false)
+      return { success: false, error: 'Authentication service is not initialized' }
     } catch (err: any) {
       setIsLoading(false)
-      return { success: false, error: err?.message || 'Authentication failed' }
+      return { success: false, error: err?.message || 'Login failed' }
     }
   }
 
