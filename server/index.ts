@@ -793,6 +793,149 @@ app.delete('/api/admin/users/:id', (req, res) => {
   res.json({ success: true, message: `User ${user.email} deleted successfully.` });
 });
 
+/**
+ * Personal User Profile Update Endpoint
+ * Updates personal details (name, username, phone) and syncs to urBackend.
+ */
+app.put('/api/user/profile', async (req, res) => {
+  const { email, firstName, lastName, username, phoneNumber } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ success: false, error: 'User email is required' });
+  }
+
+  // Find user by email or username
+  let user = inMemoryUsers.find(
+    (u) =>
+      u.email.toLowerCase() === email.toLowerCase() ||
+      (username && u.username.toLowerCase() === String(username).toLowerCase())
+  );
+
+  if (!user) {
+    user = {
+      id: `user_${Date.now()}`,
+      auth_id: `auth_${Date.now()}`,
+      firstName: firstName || '',
+      lastName: lastName || '',
+      username: (username || email.split('@')[0]).toLowerCase(),
+      email: email.toLowerCase(),
+      phoneNumber: phoneNumber || '',
+      role:
+        email.toLowerCase() === INITIAL_SUPER_ADMIN_EMAIL.toLowerCase()
+          ? 'super_admin'
+          : 'member',
+      departmentId: null,
+      departmentName: 'Unassigned',
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    inMemoryUsers.push(user);
+  } else {
+    if (firstName !== undefined) user.firstName = firstName.trim();
+    if (lastName !== undefined) user.lastName = lastName.trim();
+    if (username !== undefined && username.trim()) user.username = username.trim().toLowerCase();
+    if (phoneNumber !== undefined) user.phoneNumber = phoneNumber.trim();
+    user.updatedAt = new Date().toISOString();
+  }
+
+  // Persist to urBackend if secret key is present
+  if (URBACKEND_SECRET_KEY && URBACKEND_SECRET_KEY.startsWith('sk_live_')) {
+    try {
+      // 1. Log activity in activity_logs
+      await serverUrClient.db.insert('activity_logs', {
+        actor_email: email.toLowerCase(),
+        action: 'profile_updated',
+        resource_type: 'user',
+        resource_id: user.id || user.auth_id,
+        timestamp: new Date().toISOString(),
+        metadata: {
+          firstName: user.firstName,
+          lastName: user.lastName,
+          name: `${user.firstName} ${user.lastName}`.trim(),
+          username: user.username,
+          phoneNumber: user.phoneNumber,
+        },
+      });
+
+      // 2. Also try updating 'users' collection if present
+      try {
+        const liveUsers = await serverUrClient.db.getAll('users');
+        if (Array.isArray(liveUsers)) {
+          const match = liveUsers.find(
+            (u: any) => u.email?.toLowerCase() === email.toLowerCase()
+          );
+          if (match && (match._id || match.id)) {
+            await serverUrClient.db.update('users', match._id || match.id, {
+              firstName: user.firstName,
+              lastName: user.lastName,
+              name: `${user.firstName} ${user.lastName}`.trim(),
+              username: user.username,
+              phoneNumber: user.phoneNumber,
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        }
+      } catch {
+        // 'users' collection might be managed via urBackend auth table
+      }
+    } catch (urErr) {
+      console.error('Error syncing profile update to urBackend:', urErr);
+    }
+  }
+
+  const { password: _, ...safeUser } = user;
+  res.json({
+    success: true,
+    data: safeUser,
+    message: 'Profile details updated successfully.',
+  });
+});
+
+/**
+ * Personal Password Change Endpoint
+ */
+app.put('/api/user/change-password', async (req, res) => {
+  const { email, currentPassword, newPassword } = req.body;
+
+  if (!email || !newPassword) {
+    return res.status(400).json({ success: false, error: 'Email and new password are required' });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({
+      success: false,
+      error: 'New password must be at least 6 characters long',
+    });
+  }
+
+  const user = inMemoryUsers.find((u) => u.email.toLowerCase() === email.toLowerCase());
+  if (user) {
+    if (user.password && currentPassword && user.password !== currentPassword) {
+      return res.status(400).json({ success: false, error: 'Current password does not match' });
+    }
+    user.password = newPassword;
+    user.updatedAt = new Date().toISOString();
+  }
+
+  // Persist password change event in activity_logs
+  if (URBACKEND_SECRET_KEY && URBACKEND_SECRET_KEY.startsWith('sk_live_')) {
+    try {
+      await serverUrClient.db.insert('activity_logs', {
+        actor_email: email.toLowerCase(),
+        action: 'password_changed',
+        resource_type: 'user',
+        resource_id: user?.id || email,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (logErr) {
+      console.error('Error logging password change event to urBackend:', logErr);
+    }
+  }
+
+  res.json({ success: true, message: 'Password updated successfully.' });
+});
+
 /* ==========================================================================
    QR CODE MANAGEMENT & DYNAMIC ROUTING APIS
    ========================================================================== */

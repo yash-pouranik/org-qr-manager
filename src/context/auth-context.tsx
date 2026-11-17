@@ -8,8 +8,12 @@ export interface UserProfile {
   _id?: string
   auth_id: string
   full_name: string
+  firstName?: string
+  lastName?: string
+  username?: string
   email: string
   phone?: string | null
+  phoneNumber?: string | null
   avatar_url?: string | null
   role: AppRole
   department_id?: string | null
@@ -39,6 +43,7 @@ export interface AuthContextType {
   hasRole: (roles: AppRole[]) => boolean
   login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>
   logout: () => Promise<void>
+  updateUserProfile: (updated: Partial<UserProfile>) => void
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -48,8 +53,13 @@ const INITIAL_SUPER_ADMIN_EMAIL =
 
 const DEFAULT_DEV_ADMIN: UserProfile = {
   auth_id: 'dev_super_admin_001',
-  full_name: 'Yash Pouranik (Super Admin)',
+  full_name: 'Yash Pouranik',
+  firstName: 'Yash',
+  lastName: 'Pouranik',
+  username: 'yashpouranik',
   email: 'yashpouranik124@gmail.com',
+  phone: '+91 9876543210',
+  phoneNumber: '+91 9876543210',
   role: 'super_admin',
   department_id: null,
   department_name: 'All Departments',
@@ -93,10 +103,20 @@ export function AppAuthProvider({ children }: { children: React.ReactNode }) {
       const deptName =
         (urUser as any).departmentName || (isSuperAdminEmail ? 'All Departments' : 'Unassigned')
 
+      const firstName = (urUser as any).firstName || (userName.includes(' ') ? userName.split(' ')[0] : userName)
+      const lastName = (urUser as any).lastName || (userName.includes(' ') ? userName.split(' ').slice(1).join(' ') : '')
+      const username = (urUser as any).username || urUser.email.split('@')[0]
+      const phone = (urUser as any).phoneNumber || (urUser as any).phone || null
+
       const resolvedProfile: UserProfile = {
         auth_id: userId,
         full_name: userName,
+        firstName,
+        lastName,
+        username,
         email: urUser.email,
+        phone,
+        phoneNumber: phone,
         role: isSuperAdminEmail ? 'super_admin' : userRole,
         department_id: deptId,
         department_name: deptName,
@@ -156,6 +176,24 @@ export function AppAuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const updateUserProfile = (updated: Partial<UserProfile>) => {
+    setProfile((prev) => {
+      if (!prev) return null
+      const fullName = (updated.firstName || updated.lastName)
+        ? `${updated.firstName ?? prev.firstName ?? ''} ${updated.lastName ?? prev.lastName ?? ''}`.trim()
+        : (updated.full_name || prev.full_name)
+      const next: UserProfile = {
+        ...prev,
+        ...updated,
+        full_name: fullName,
+        phone: updated.phoneNumber ?? updated.phone ?? prev.phone,
+        phoneNumber: updated.phoneNumber ?? updated.phone ?? prev.phoneNumber,
+      }
+      localStorage.setItem('org_user_profile', JSON.stringify(next))
+      return next
+    })
+  }
+
   const role: AppRole = profile?.role || 'member'
   const isSuperAdmin = role === 'super_admin'
   const isAdmin = isSuperAdmin || role === 'admin'
@@ -199,6 +237,7 @@ export function AppAuthProvider({ children }: { children: React.ReactNode }) {
         hasRole,
         login: handleLogin,
         logout: handleLogout,
+        updateUserProfile,
       }}
     >
       {children}

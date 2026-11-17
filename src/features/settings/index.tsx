@@ -11,12 +11,12 @@ import { SidebarNav } from './components/sidebar-nav'
 
 const sidebarNavItems = [
   {
-    title: 'Profile',
+    title: 'Personal Profile',
     href: '/settings',
     icon: <UserCog size={18} />,
   },
   {
-    title: 'Account',
+    title: 'Account & Security',
     href: '/settings/account',
     icon: <Wrench size={18} />,
   },
@@ -51,10 +51,10 @@ export function Settings() {
       <Main fixed>
         <div className='space-y-0.5'>
           <h1 className='text-2xl font-bold tracking-tight md:text-3xl'>
-            Settings
+            Account Settings
           </h1>
           <p className='text-muted-foreground'>
-            Manage your account settings and set e-mail preferences.
+            Manage your personal profile, credentials, and organizational preferences.
           </p>
         </div>
         <Separator className='my-4 lg:my-6' />
@@ -62,8 +62,10 @@ export function Settings() {
           <aside className='top-0 lg:sticky lg:w-1/5'>
             <SidebarNav items={sidebarNavItems} />
           </aside>
-          <div className='flex w-full overflow-y-hidden p-1'>
-            <Outlet />
+          <div className='flex w-full p-1 pr-4 lg:max-w-2xl'>
+            <div className='w-full'>
+              <Outlet />
+            </div>
           </div>
         </div>
       </Main>

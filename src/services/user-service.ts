@@ -22,6 +22,20 @@ export interface UpdateUserRoleInput {
   requesterEmail?: string
 }
 
+export interface UpdateProfileInput {
+  email: string
+  firstName: string
+  lastName: string
+  username: string
+  phoneNumber?: string
+}
+
+export interface ChangePasswordInput {
+  email: string
+  currentPassword?: string
+  newPassword: string
+}
+
 export const userService = {
   async getAll(): Promise<User[]> {
     try {
@@ -91,6 +105,40 @@ export const userService = {
     const result = await res.json()
     if (!res.ok || !result.success) {
       throw new Error(result.error || 'Failed to delete user')
+    }
+
+    return result
+  },
+
+  async updateProfile(input: UpdateProfileInput): Promise<User> {
+    const res = await fetch(apiUrl('/api/user/profile'), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+
+    const result = await res.json()
+    if (!res.ok || !result.success) {
+      throw new Error(result.error || 'Failed to update personal profile')
+    }
+
+    return {
+      ...result.data,
+      createdAt: new Date(result.data.createdAt),
+      updatedAt: new Date(result.data.updatedAt),
+    }
+  },
+
+  async changePassword(input: ChangePasswordInput): Promise<{ success: boolean; message?: string }> {
+    const res = await fetch(apiUrl('/api/user/change-password'), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+
+    const result = await res.json()
+    if (!res.ok || !result.success) {
+      throw new Error(result.error || 'Failed to update password')
     }
 
     return result
