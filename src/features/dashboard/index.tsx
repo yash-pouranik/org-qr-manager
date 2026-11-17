@@ -28,17 +28,50 @@ import { ThemeSwitch } from '@/components/theme-switch'
 import { Skeleton } from '@/components/ui/skeleton'
 import { qrService } from '@/services/qr-service'
 import { departmentService } from '@/services/department-service'
+import { useAuthUser } from '@/context/auth-context'
 
 export function Dashboard() {
-  const { data: qrs = [], isLoading: loadingQrs } = useQuery({
+  const {
+    isSuperAdmin,
+    canCreateQr,
+    canManageDepartments,
+    canManageUsers,
+    assignedDepartmentId,
+    assignedDepartmentName,
+  } = useAuthUser()
+
+  const { data: rawQrs = [], isLoading: loadingQrs } = useQuery({
     queryKey: ['qr-codes', 'active'],
     queryFn: () => qrService.getAll({ trash: false }),
   })
 
-  const { data: departments = [], isLoading: loadingDepts } = useQuery({
+  const { data: rawDepartments = [], isLoading: loadingDepts } = useQuery({
     queryKey: ['departments'],
     queryFn: () => departmentService.getAll(),
   })
+
+  // Scope QR codes to department for non-super admins
+  const qrs = useMemo(() => {
+    if (isSuperAdmin) return rawQrs
+    if (assignedDepartmentId) {
+      return rawQrs.filter(
+        (q) =>
+          q.departmentId === assignedDepartmentId ||
+          q.departmentName === assignedDepartmentName
+      )
+    }
+    return rawQrs
+  }, [rawQrs, isSuperAdmin, assignedDepartmentId, assignedDepartmentName])
+
+  const departments = useMemo(() => {
+    if (isSuperAdmin) return rawDepartments
+    if (assignedDepartmentId) {
+      return rawDepartments.filter(
+        (d) => d.id === assignedDepartmentId || d.name === assignedDepartmentName
+      )
+    }
+    return rawDepartments
+  }, [rawDepartments, isSuperAdmin, assignedDepartmentId, assignedDepartmentName])
 
   // Live metrics calculation
   const totalScans = useMemo(
@@ -92,18 +125,20 @@ export function Dashboard() {
               Centralized QR generation, dynamic redirect routing, and scan metrics across departments.
             </p>
           </div>
-          <div className='flex items-center gap-2'>
-            <Button
-              asChild
-              size='sm'
-              className='gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm'
-            >
-              <Link to='/qr-codes/create'>
-                <Plus className='size-4' />
-                Generate QR Code
-              </Link>
-            </Button>
-          </div>
+          {canCreateQr && (
+            <div className='flex items-center gap-2'>
+              <Button
+                asChild
+                size='sm'
+                className='gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm'
+              >
+                <Link to='/qr-codes/create'>
+                  <Plus className='size-4' />
+                  Generate QR Code
+                </Link>
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Core Metric Cards */}
@@ -202,11 +237,13 @@ export function Dashboard() {
                     <p className='text-xs text-muted-foreground max-w-sm mt-1 mb-4'>
                       Create your first static payment QR or dynamic link to start tracking visitor scans.
                     </p>
-                    <Button asChild size='sm' className='gap-1.5'>
-                      <Link to='/qr-codes/create'>
-                        <Plus className='size-3.5' /> Create QR Code
-                      </Link>
-                    </Button>
+                    {canCreateQr && (
+                      <Button asChild size='sm' className='gap-1.5'>
+                        <Link to='/qr-codes/create'>
+                          <Plus className='size-3.5' /> Create QR Code
+                        </Link>
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   <div className='divide-y divide-border/60'>
@@ -252,17 +289,19 @@ export function Dashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent className='space-y-2.5'>
-                <Button
-                  asChild
-                  variant='outline'
-                  size='sm'
-                  className='w-full justify-start gap-2 h-9 text-xs'
-                >
-                  <Link to='/qr-codes/create'>
-                    <Plus className='size-3.5 text-primary' />
-                    <span>Generate New QR Code</span>
-                  </Link>
-                </Button>
+                {canCreateQr && (
+                  <Button
+                    asChild
+                    variant='outline'
+                    size='sm'
+                    className='w-full justify-start gap-2 h-9 text-xs'
+                  >
+                    <Link to='/qr-codes/create'>
+                      <Plus className='size-3.5 text-primary' />
+                      <span>Generate New QR Code</span>
+                    </Link>
+                  </Button>
+                )}
 
                 <Button
                   asChild
@@ -276,29 +315,33 @@ export function Dashboard() {
                   </Link>
                 </Button>
 
-                <Button
-                  asChild
-                  variant='outline'
-                  size='sm'
-                  className='w-full justify-start gap-2 h-9 text-xs'
-                >
-                  <Link to='/departments'>
-                    <Building2 className='size-3.5 text-amber-600' />
-                    <span>Department Directory</span>
-                  </Link>
-                </Button>
+                {canManageDepartments && (
+                  <Button
+                    asChild
+                    variant='outline'
+                    size='sm'
+                    className='w-full justify-start gap-2 h-9 text-xs'
+                  >
+                    <Link to='/departments'>
+                      <Building2 className='size-3.5 text-amber-600' />
+                      <span>Department Directory</span>
+                    </Link>
+                  </Button>
+                )}
 
-                <Button
-                  asChild
-                  variant='outline'
-                  size='sm'
-                  className='w-full justify-start gap-2 h-9 text-xs'
-                >
-                  <Link to='/users'>
-                    <ShieldCheck className='size-3.5 text-sky-600' />
-                    <span>User Governance & Access</span>
-                  </Link>
-                </Button>
+                {canManageUsers && (
+                  <Button
+                    asChild
+                    variant='outline'
+                    size='sm'
+                    className='w-full justify-start gap-2 h-9 text-xs'
+                  >
+                    <Link to='/users'>
+                      <ShieldCheck className='size-3.5 text-sky-600' />
+                      <span>User Governance & Access</span>
+                    </Link>
+                  </Button>
+                )}
               </CardContent>
             </Card>
           </div>

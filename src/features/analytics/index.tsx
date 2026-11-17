@@ -28,6 +28,7 @@ import {
 } from '@/services/analytics-service'
 import { departmentService } from '@/services/department-service'
 import { Department } from '@/types/department'
+import { useAuthUser } from '@/context/auth-context'
 import {
   BarChart3,
   TrendingUp,
@@ -79,13 +80,23 @@ const DEVICE_COLORS: Record<string, string> = {
 }
 
 export function AnalyticsPage() {
+  const { isSuperAdmin, assignedDepartmentId, assignedDepartmentName } = useAuthUser()
   const [timeRange, setTimeRange] = useState<TimeRangeKey>('30d')
-  const [selectedDept, setSelectedDept] = useState<string>('all')
+  const [selectedDept, setSelectedDept] = useState<string>(
+    !isSuperAdmin && assignedDepartmentId ? assignedDepartmentId : 'all'
+  )
   const [departments, setDepartments] = useState<Department[]>([])
   const [data, setData] = useState<AnalyticsSummary | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isSimulating, setIsSimulating] = useState(false)
+
+  // Enforce department scope for non-super admins
+  useEffect(() => {
+    if (!isSuperAdmin && assignedDepartmentId) {
+      setSelectedDept(assignedDepartmentId)
+    }
+  }, [isSuperAdmin, assignedDepartmentId])
 
   // Fetch departments for filter dropdown
   useEffect(() => {
@@ -161,18 +172,30 @@ export function AnalyticsPage() {
 
           <div className='flex flex-wrap items-center gap-2'>
             {/* Department Filter */}
-            <Select value={selectedDept} onValueChange={setSelectedDept}>
+            <Select
+              value={!isSuperAdmin && assignedDepartmentId ? assignedDepartmentId : selectedDept}
+              onValueChange={setSelectedDept}
+              disabled={!isSuperAdmin}
+            >
               <SelectTrigger className='w-[190px] h-9 text-xs'>
                 <Building2 className='size-3.5 mr-1 text-muted-foreground' />
-                <SelectValue placeholder='All Departments' />
+                <SelectValue
+                  placeholder={
+                    !isSuperAdmin
+                      ? assignedDepartmentName || 'Assigned Department'
+                      : 'All Departments'
+                  }
+                />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value='all'>All Departments</SelectItem>
-                {departments.map((dept) => (
-                  <SelectItem key={dept.id} value={dept.id}>
-                    {dept.name}
-                  </SelectItem>
-                ))}
+                {isSuperAdmin && <SelectItem value='all'>All Departments</SelectItem>}
+                {departments
+                  .filter((d) => (isSuperAdmin ? true : d.id === assignedDepartmentId))
+                  .map((dept) => (
+                    <SelectItem key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
 
@@ -325,15 +348,17 @@ export function AnalyticsPage() {
                   You can also generate test scans to verify charts and aggregation pipelines.
                 </p>
                 <div className='flex items-center gap-2'>
-                  <Button
-                    size='sm'
-                    onClick={handleSimulateTestTraffic}
-                    disabled={isSimulating}
-                    className='gap-1.5'
-                  >
-                    <Sparkles className='size-3.5' />
-                    {isSimulating ? 'Simulating Scans...' : 'Simulate 15 Test Scans'}
-                  </Button>
+                  {isSuperAdmin && (
+                    <Button
+                      size='sm'
+                      onClick={handleSimulateTestTraffic}
+                      disabled={isSimulating}
+                      className='gap-1.5'
+                    >
+                      <Sparkles className='size-3.5' />
+                      {isSimulating ? 'Simulating Scans...' : 'Simulate 15 Test Scans'}
+                    </Button>
+                  )}
                   <Button variant='outline' size='sm' asChild className='gap-1.5'>
                     <Link to='/qr-codes/create'>
                       <Plus className='size-3.5' />
@@ -358,18 +383,20 @@ export function AnalyticsPage() {
                     Daily scan volume vs. unique visitor sessions across selected time range.
                   </CardDescription>
                 </div>
-                <div className='flex items-center gap-2'>
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    onClick={handleSimulateTestTraffic}
-                    disabled={isSimulating}
-                    className='text-xs h-8 text-muted-foreground hover:text-foreground'
-                  >
-                    <Sparkles className='size-3 mr-1 text-primary' />
-                    {isSimulating ? 'Simulating...' : '+ Add Sample Scans'}
-                  </Button>
-                </div>
+                {isSuperAdmin && (
+                  <div className='flex items-center gap-2'>
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      onClick={handleSimulateTestTraffic}
+                      disabled={isSimulating}
+                      className='text-xs h-8 text-muted-foreground hover:text-foreground'
+                    >
+                      <Sparkles className='size-3 mr-1 text-primary' />
+                      {isSimulating ? 'Simulating...' : '+ Add Sample Scans'}
+                    </Button>
+                  </div>
+                )}
               </CardHeader>
               <CardContent className='pt-4'>
                 {isLoading ? (

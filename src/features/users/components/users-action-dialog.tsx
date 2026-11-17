@@ -1,12 +1,12 @@
 'use client'
 
+import { useState } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ShieldAlert } from 'lucide-react'
-import { showSubmittedData } from '@/lib/show-submitted-data'
+import { Loader2, ShieldAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -37,67 +37,39 @@ const formSchema = z
   .object({
     firstName: z.string().min(1, 'First Name is required.'),
     lastName: z.string().min(1, 'Last Name is required.'),
-    username: z.string().min(1, 'Username is required.'),
-    phoneNumber: z.string().min(1, 'Phone number is required.'),
-    email: z.email({
-      error: (iss) => (iss.input === '' ? 'Email is required.' : undefined),
-    }),
-    password: z.string().transform((pwd) => pwd.trim()),
+    username: z
+      .string()
+      .min(3, 'Username must be at least 3 characters.')
+      .regex(/^[a-zA-Z0-9_.-]+$/, 'Username can only contain letters, numbers, dots, and hyphens.'),
+    phoneNumber: z.string(),
+    email: z.string().email('Please enter a valid email address.'),
+    password: z.string(),
+    confirmPassword: z.string(),
     role: z.string().min(1, 'Role is required.'),
     departmentId: z.string().optional().nullable(),
-    confirmPassword: z.string().transform((pwd) => pwd.trim()),
     isEdit: z.boolean(),
   })
   .refine(
     (data) => {
       if (data.isEdit && !data.password) return true
-      return data.password.length > 0
+      return data.password.length >= 6
     },
     {
-      message: 'Password is required.',
+      message: 'Password must be at least 6 characters long.',
       path: ['password'],
     }
   )
   .refine(
-    ({ isEdit, password }) => {
-      if (isEdit && !password) return true
-      return password.length >= 8
+    (data) => {
+      if (data.isEdit && !data.password) return true
+      return data.password === data.confirmPassword
     },
     {
-      message: 'Password must be at least 8 characters long.',
-      path: ['password'],
-    }
-  )
-  .refine(
-    ({ isEdit, password }) => {
-      if (isEdit && !password) return true
-      return /[a-z]/.test(password)
-    },
-    {
-      message: 'Password must contain at least one lowercase letter.',
-      path: ['password'],
-    }
-  )
-  .refine(
-    ({ isEdit, password }) => {
-      if (isEdit && !password) return true
-      return /\d/.test(password)
-    },
-    {
-      message: 'Password must contain at least one number.',
-      path: ['password'],
-    }
-  )
-  .refine(
-    ({ isEdit, password, confirmPassword }) => {
-      if (isEdit && !password) return true
-      return password === confirmPassword
-    },
-    {
-      message: "Passwords don't match.",
+      message: "Passwords do not match.",
       path: ['confirmPassword'],
     }
   )
+
 type UserForm = z.infer<typeof formSchema>
 
 type UserActionDialogProps = {
@@ -112,6 +84,7 @@ export function UsersActionDialog({
   onOpenChange,
 }: UserActionDialogProps) {
   const isEdit = !!currentRow
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const queryClient = useQueryClient()
   const { user: currentAuthUser, isSuperAdmin, assignedDepartmentId } = useAuthUser()
 
@@ -130,32 +103,37 @@ export function UsersActionDialog({
 
   const form = useForm<UserForm>({
     resolver: zodResolver(formSchema),
-    defaultValues: isEdit
+    values: isEdit && currentRow
       ? {
-          ...currentRow,
+          firstName: currentRow.firstName || '',
+          lastName: currentRow.lastName || '',
+          username: currentRow.username || '',
+          email: currentRow.email || '',
+          phoneNumber: currentRow.phoneNumber || '',
+          role: currentRow.role || 'member',
           departmentId: currentRow.departmentId || '',
           password: '',
           confirmPassword: '',
-          isEdit,
+          isEdit: true,
         }
       : {
           firstName: '',
           lastName: '',
           username: '',
           email: '',
-          role: !isSuperAdmin ? 'member' : '',
-          departmentId: !isSuperAdmin ? (assignedDepartmentId || '') : '',
           phoneNumber: '',
+          role: isSuperAdmin ? 'manager' : 'member',
+          departmentId: !isSuperAdmin ? (assignedDepartmentId || '') : '',
           password: '',
           confirmPassword: '',
-          isEdit,
+          isEdit: false,
         },
   })
 
   const onSubmit = async (values: UserForm) => {
     try {
+      setIsSubmitting(true)
       if (isEdit && currentRow) {
-        // Enforce client-side check against self-role elevation
         if (isSelf && values.role !== currentRow.role) {
           toast.error('Self-role alteration is strictly prohibited for security.')
           return
@@ -193,20 +171,20 @@ export function UsersActionDialog({
         toast.success(`User ${values.email} created successfully`)
       }
 
-      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
-      queryClient.invalidateQueries({ queryKey: ['departments'] })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['admin-users'] }),
+        queryClient.invalidateQueries({ queryKey: ['departments'] }),
+      ])
+      form.reset()
+      onOpenChange(false)
     } catch (err: any) {
-      toast.error(err.message || 'Action failed')
+      toast.error(err.message || 'Operation failed. Please try again.')
+    } finally {
+      setIsSubmitting(false)
     }
-
-    form.reset()
-    showSubmittedData(values)
-    onOpenChange(false)
   }
 
-  const isPasswordTouched = !!form.formState.dirtyFields.password
-
-  // Distinct roles for the select dropdown
+  // Distinct enterprise roles
   const uniqueRoles = Array.from(
     new Map(
       roles.map((r) => [
@@ -225,7 +203,7 @@ export function UsersActionDialog({
 
   const departmentOptions = isSuperAdmin
     ? [
-        { label: 'All Departments (Unassigned)', value: '' },
+        { label: 'Unassigned (No Department)', value: '' },
         ...departments.map((d) => ({ label: d.name, value: d.id })),
       ]
     : departments
@@ -236,52 +214,49 @@ export function UsersActionDialog({
     <Dialog
       open={open}
       onOpenChange={(state) => {
-        form.reset()
+        if (!state) {
+          form.reset()
+        }
         onOpenChange(state)
       }}
     >
-      <DialogContent className='sm:max-w-lg'>
+      <DialogContent className='sm:max-w-lg max-h-[90vh] overflow-y-auto'>
         <DialogHeader className='text-start'>
-          <DialogTitle>{isEdit ? 'Edit User' : 'Add New User'}</DialogTitle>
+          <DialogTitle>{isEdit ? 'Edit User Profile' : 'Add New User'}</DialogTitle>
           <DialogDescription>
-            {isEdit ? 'Update the user here. ' : 'Create new user here. '}
-            Click save when you&apos;re done.
+            {isEdit
+              ? 'Update user roles, assigned department, and profile details.'
+              : 'Create a new user account with portal access and credentials.'}
           </DialogDescription>
         </DialogHeader>
 
         {isSelf && (
-          <div className='flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-300'>
+          <div className='flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300'>
             <ShieldAlert className='size-4 shrink-0 text-amber-600' />
             <span>
-              You are editing your own profile. Role modification is disabled by security governance policy.
+              You are editing your own profile. Role and department changes are restricted by governance policy.
             </span>
           </div>
         )}
 
-        <div className='h-105 w-[calc(100%+0.75rem)] overflow-y-auto py-1 pe-3'>
-          <Form {...form}>
-            <form
-              id='user-form'
-              onSubmit={form.handleSubmit(onSubmit)}
-              className='space-y-4 px-0.5'
-            >
+        <Form {...form}>
+          <form
+            id='user-form'
+            onSubmit={form.handleSubmit(onSubmit)}
+            className='space-y-4 pt-1'
+          >
+            {/* First & Last Name */}
+            <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
               <FormField
                 control={form.control}
                 name='firstName'
                 render={({ field }) => (
-                  <FormItem className='grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1'>
-                    <FormLabel className='col-span-2 text-end'>
-                      First Name
-                    </FormLabel>
+                  <FormItem>
+                    <FormLabel>First Name</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder='John'
-                        className='col-span-4'
-                        autoComplete='off'
-                        {...field}
-                      />
+                      <Input placeholder='e.g. Rahul' autoComplete='off' {...field} />
                     </FormControl>
-                    <FormMessage className='col-span-4 col-start-3' />
+                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -289,19 +264,34 @@ export function UsersActionDialog({
                 control={form.control}
                 name='lastName'
                 render={({ field }) => (
-                  <FormItem className='grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1'>
-                    <FormLabel className='col-span-2 text-end'>
-                      Last Name
-                    </FormLabel>
+                  <FormItem>
+                    <FormLabel>Last Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder='e.g. Sharma' autoComplete='off' {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Email & Username */}
+            <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='email'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email Address</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder='Doe'
-                        className='col-span-4'
-                        autoComplete='off'
+                        type='email'
+                        placeholder='user@organization.local'
+                        disabled={isEdit}
                         {...field}
                       />
                     </FormControl>
-                    <FormMessage className='col-span-4 col-start-3' />
+                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -309,73 +299,37 @@ export function UsersActionDialog({
                 control={form.control}
                 name='username'
                 render={({ field }) => (
-                  <FormItem className='grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1'>
-                    <FormLabel className='col-span-2 text-end'>
-                      Username
-                    </FormLabel>
+                  <FormItem>
+                    <FormLabel>Username</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder='john_doe'
-                        className='col-span-4'
+                        placeholder='e.g. rahul_s'
+                        disabled={isEdit}
                         {...field}
                       />
                     </FormControl>
-                    <FormMessage className='col-span-4 col-start-3' />
+                    <FormMessage />
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name='email'
-                render={({ field }) => (
-                  <FormItem className='grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1'>
-                    <FormLabel className='col-span-2 text-end'>Email</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder='john.doe@organization.local'
-                        className='col-span-4'
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage className='col-span-4 col-start-3' />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name='phoneNumber'
-                render={({ field }) => (
-                  <FormItem className='grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1'>
-                    <FormLabel className='col-span-2 text-end'>
-                      Phone Number
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder='+91 9876543210'
-                        className='col-span-4'
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage className='col-span-4 col-start-3' />
-                  </FormItem>
-                )}
-              />
+            </div>
+
+            {/* Role & Department */}
+            <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
               <FormField
                 control={form.control}
                 name='role'
                 render={({ field }) => (
-                  <FormItem className='grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1'>
-                    <FormLabel className='col-span-2 text-end'>Role</FormLabel>
-                    <div className='col-span-4'>
-                      <SelectDropdown
-                        defaultValue={field.value}
-                        onValueChange={field.onChange}
-                        placeholder='Select an enterprise role'
-                        disabled={isSelf}
-                        items={availableRoles}
-                      />
-                    </div>
-                    <FormMessage className='col-span-4 col-start-3' />
+                  <FormItem>
+                    <FormLabel>Enterprise Role</FormLabel>
+                    <SelectDropdown
+                      defaultValue={field.value}
+                      onValueChange={field.onChange}
+                      placeholder='Select role'
+                      disabled={isSelf}
+                      items={availableRoles}
+                    />
+                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -383,66 +337,82 @@ export function UsersActionDialog({
                 control={form.control}
                 name='departmentId'
                 render={({ field }) => (
-                  <FormItem className='grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1'>
-                    <FormLabel className='col-span-2 text-end'>Department</FormLabel>
-                    <div className='col-span-4'>
-                      <SelectDropdown
-                        defaultValue={field.value || ''}
-                        onValueChange={field.onChange}
-                        placeholder='Select department scope'
-                        disabled={!isSuperAdmin || isSelf}
-                        items={departmentOptions}
-                      />
-                    </div>
-                    <FormMessage className='col-span-4 col-start-3' />
+                  <FormItem>
+                    <FormLabel>Department Scope</FormLabel>
+                    <SelectDropdown
+                      defaultValue={field.value || ''}
+                      onValueChange={field.onChange}
+                      placeholder='Select department'
+                      disabled={!isSuperAdmin || isSelf}
+                      items={departmentOptions}
+                    />
+                    <FormMessage />
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name='password'
-                render={({ field }) => (
-                  <FormItem className='grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1'>
-                    <FormLabel className='col-span-2 text-end'>
-                      Password
-                    </FormLabel>
-                    <FormControl>
-                      <PasswordInput
-                        placeholder='e.g., S3cur3P@ssw0rd'
-                        className='col-span-4'
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage className='col-span-4 col-start-3' />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name='confirmPassword'
-                render={({ field }) => (
-                  <FormItem className='grid grid-cols-6 items-center space-y-0 gap-x-4 gap-y-1'>
-                    <FormLabel className='col-span-2 text-end'>
-                      Confirm Password
-                    </FormLabel>
-                    <FormControl>
-                      <PasswordInput
-                        disabled={!isPasswordTouched}
-                        placeholder='e.g., S3cur3P@ssw0rd'
-                        className='col-span-4'
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage className='col-span-4 col-start-3' />
-                  </FormItem>
-                )}
-              />
-            </form>
-          </Form>
-        </div>
-        <DialogFooter>
-          <Button type='submit' form='user-form'>
-            Save changes
+            </div>
+
+            {/* Phone Number */}
+            <FormField
+              control={form.control}
+              name='phoneNumber'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Phone Number (Optional)</FormLabel>
+                  <FormControl>
+                    <Input placeholder='+91 9876543210' {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Password Credentials */}
+            {!isEdit ? (
+              <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
+                <FormField
+                  control={form.control}
+                  name='password'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <PasswordInput placeholder='Minimum 6 characters' {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name='confirmPassword'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Confirm Password</FormLabel>
+                      <FormControl>
+                        <PasswordInput placeholder='Re-enter password' {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            ) : null}
+          </form>
+        </Form>
+
+        <DialogFooter className='gap-2 pt-2 sm:gap-0'>
+          <Button
+            type='button'
+            variant='outline'
+            onClick={() => onOpenChange(false)}
+            disabled={isSubmitting}
+          >
+            Cancel
+          </Button>
+          <Button type='submit' form='user-form' disabled={isSubmitting}>
+            {isSubmitting && <Loader2 className='mr-2 size-4 animate-spin' />}
+            {isEdit ? 'Save Changes' : 'Create User'}
           </Button>
         </DialogFooter>
       </DialogContent>

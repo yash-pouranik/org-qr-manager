@@ -24,8 +24,11 @@ export function AppSidebar() {
         if (item.url === '/departments' && !canManageDepartments) {
           return false
         }
-        // Only Super Admin & Department Admin can access User Management
+        // Only Super Admin & Department Admin can access User Management and Audit Logs
         if (item.url === '/users' && !canManageUsers) {
+          return false
+        }
+        if (item.url === '/audit-logs' && !canManageUsers) {
           return false
         }
         // Members have read-only access (no QR creator)

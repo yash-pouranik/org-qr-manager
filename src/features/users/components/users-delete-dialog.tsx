@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { AlertTriangle, ShieldAlert } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { showSubmittedData } from '@/lib/show-submitted-data'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -52,7 +51,6 @@ export function UsersDeleteDialog({
     }
 
     onOpenChange(false)
-    showSubmittedData(currentRow, 'The following user has been deleted:')
   }
 
   return (

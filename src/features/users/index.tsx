@@ -23,8 +23,7 @@ const route = getRouteApi('/_authenticated/users/')
 export function Users() {
   const search = route.useSearch()
   const navigate = route.useNavigate()
-  const { isSuperAdmin, isAdmin, assignedDepartmentId, assignedDepartmentName } = useAuthUser()
-  const canManageUsers = isSuperAdmin || isAdmin
+  const { isSuperAdmin, assignedDepartmentId, assignedDepartmentName } = useAuthUser()
 
   const { data: usersData = defaultUsers, isLoading } = useQuery({
     queryKey: ['admin-users'],
@@ -85,7 +84,7 @@ export function Users() {
               Manage team members, enforce role-based access control, and assign departmental workspaces.
             </p>
           </div>
-          {canManageUsers && <UsersPrimaryButtons />}
+          {isSuperAdmin && <UsersPrimaryButtons />}
         </div>
 
         {/* RBAC Metric Cards */}

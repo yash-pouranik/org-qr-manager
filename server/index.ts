@@ -433,7 +433,7 @@ app.delete('/api/admin/departments/:id', async (req, res) => {
 
 /**
  * List all users (Sanitized - raw passwords are never returned)
- * Discovers accounts from in-memory store and live departments.
+ * Discovers accounts from in-memory store, live departments, and activity logs.
  */
 app.get('/api/admin/users', async (_req, res) => {
   const userMap = new Map<string, any>();
@@ -458,7 +458,7 @@ app.get('/api/admin/users', async (_req, res) => {
             const lastName = parts.slice(1).join(' ') || 'Lead';
             const username = email.split('@')[0].replace(/[^a-z0-9_]/g, '_');
 
-            const discoveredUser = {
+            const discoveredUser: UserRecord = {
               id: `user_dept_${dept._id || dept.id}`,
               auth_id: `auth_dept_${dept._id || dept.id}`,
               firstName,
@@ -474,12 +474,53 @@ app.get('/api/admin/users', async (_req, res) => {
               updatedAt: dept.updatedAt || dept.updated_at || new Date().toISOString(),
             };
 
-            userMap.set(email, discoveredUser);
+            inMemoryUsers.push(discoveredUser);
+            const { password: _, ...safe } = discoveredUser;
+            userMap.set(email, safe);
           }
         }
       }
     } catch (err) {
       console.error('Error discovering users from live departments:', err);
+    }
+
+    // 3. Discover created users from activity logs
+    try {
+      const logsResp = await fetch(`${URBACKEND_BASE_URL}/api/data/activity_logs?limit=500`, {
+        headers: { 'x-api-key': URBACKEND_SECRET_KEY },
+      });
+      const logsResult = await logsResp.json();
+      const logsItems = logsResult?.data?.items || (Array.isArray(logsResult?.data) ? logsResult.data : []);
+      if (Array.isArray(logsItems)) {
+        for (const log of logsItems) {
+          if (log.action === 'user_created' && log.metadata && log.metadata.email) {
+            const m = log.metadata;
+            const email = m.email.toLowerCase();
+            if (!userMap.has(email)) {
+              const createdUser: UserRecord = {
+                id: log.resource_id || `user_${Date.now()}`,
+                auth_id: log.resource_id || `auth_${Date.now()}`,
+                firstName: m.firstName || '',
+                lastName: m.lastName || '',
+                username: m.username || email.split('@')[0],
+                email,
+                phoneNumber: m.phoneNumber || '',
+                role: m.role || 'member',
+                departmentId: m.departmentId || null,
+                departmentName: m.departmentName || 'Unassigned',
+                status: 'active',
+                createdAt: log.timestamp || log.createdAt || new Date().toISOString(),
+                updatedAt: log.timestamp || log.updatedAt || new Date().toISOString(),
+              };
+              inMemoryUsers.push(createdUser);
+              const { password: _, ...safe } = createdUser;
+              userMap.set(email, safe);
+            }
+          }
+        }
+      }
+    } catch (logErr) {
+      console.error('Error reading activity_logs for users:', logErr);
     }
   }
 
@@ -488,7 +529,6 @@ app.get('/api/admin/users', async (_req, res) => {
     data: Array.from(userMap.values()),
   });
 });
-
 
 /**
  * Create user account with credentials
@@ -512,7 +552,29 @@ app.post('/api/admin/users', async (req, res) => {
     return res.status(409).json({ success: false, error: 'A user with this email already exists' });
   }
 
-  const dept = inMemoryDepartments.find((d) => d.id === departmentId);
+  // Resolve department from memory or live urBackend
+  let resolvedDeptName = 'Unassigned';
+  let resolvedDeptId: string | null = departmentId || null;
+
+  if (departmentId) {
+    const memoryDept = inMemoryDepartments.find((d) => d.id === departmentId);
+    if (memoryDept) {
+      resolvedDeptName = memoryDept.name;
+    } else if (URBACKEND_SECRET_KEY && URBACKEND_SECRET_KEY.startsWith('sk_live_')) {
+      try {
+        const liveDepts = await serverUrClient.db.getAll('departments');
+        const found = Array.isArray(liveDepts)
+          ? liveDepts.find((d: any) => (d._id || d.id) === departmentId || d.slug === departmentId)
+          : null;
+        if (found) {
+          resolvedDeptName = found.name;
+          resolvedDeptId = found._id || found.id;
+        }
+      } catch (err) {
+        console.error('Error resolving department for new user:', err);
+      }
+    }
+  }
 
   // If live urBackend secret key is present, register via urBackend's Auth API
   let urBackendUserId: string | null = null;
@@ -527,39 +589,35 @@ app.post('/api/admin/users', async (req, res) => {
         body: JSON.stringify({
           email: email.toLowerCase(),
           password,
-          name: `${firstName || ''} ${lastName || ''}`.trim() || username,
           firstName: firstName || '',
           lastName: lastName || '',
           username: username.toLowerCase(),
-          phoneNumber: phoneNumber || '',
           role: role || 'member',
-          departmentId: departmentId || null,
-          departmentName: dept ? dept.name : 'Unassigned',
-          status: 'active',
+          departmentId: resolvedDeptId,
+          departmentName: resolvedDeptName,
         }),
       });
 
       const urResult = await urResp.json();
-      if (urResult && urResult.user && urResult.user._id) {
-        urBackendUserId = urResult.user._id;
-      }
+      urBackendUserId = urResult.userId || urResult.user?._id || urResult._id || null;
     } catch (err) {
       console.error('urBackend /api/userAuth/signup error:', err);
     }
   }
 
+  const newUserId = urBackendUserId || `user_${Date.now()}`;
   const newUser: UserRecord = {
-    id: urBackendUserId || `user_${Date.now()}`,
+    id: newUserId,
     auth_id: urBackendUserId || `auth_${Date.now()}`,
     firstName: firstName || '',
     lastName: lastName || '',
     username: username.toLowerCase(),
     email: email.toLowerCase(),
-    password, // Stored for credential verification
+    password,
     phoneNumber: phoneNumber || '',
     role: role || 'member',
-    departmentId: departmentId || null,
-    departmentName: dept ? dept.name : 'Unassigned',
+    departmentId: resolvedDeptId,
+    departmentName: resolvedDeptName,
     status: 'active',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -567,9 +625,29 @@ app.post('/api/admin/users', async (req, res) => {
 
   inMemoryUsers.push(newUser);
 
-  // Update department member count
-  if (dept) {
-    dept.totalMembers += 1;
+  // Persist user creation in activity_logs
+  if (URBACKEND_SECRET_KEY && URBACKEND_SECRET_KEY.startsWith('sk_live_')) {
+    try {
+      await serverUrClient.db.insert('activity_logs', {
+        actor_email: email.toLowerCase(),
+        action: 'user_created',
+        resource_type: 'user',
+        resource_id: newUserId,
+        timestamp: new Date().toISOString(),
+        metadata: {
+          firstName: firstName || '',
+          lastName: lastName || '',
+          username: username.toLowerCase(),
+          email: email.toLowerCase(),
+          role: role || 'member',
+          departmentId: resolvedDeptId,
+          departmentName: resolvedDeptName,
+          phoneNumber: phoneNumber || '',
+        },
+      });
+    } catch (logErr) {
+      console.error('Failed to write activity_log for user creation:', logErr);
+    }
   }
 
   const { password: _, ...safeUser } = newUser;
@@ -587,7 +665,12 @@ app.post('/api/admin/users/update-role', (req, res) => {
     return res.status(400).json({ success: false, error: 'Target user ID is required' });
   }
 
-  const userIndex = inMemoryUsers.findIndex((u) => u.id === targetUserId);
+  const userIndex = inMemoryUsers.findIndex(
+    (u) =>
+      u.id === targetUserId ||
+      u.email.toLowerCase() === targetUserId.toLowerCase() ||
+      u.auth_id === targetUserId
+  );
   if (userIndex === -1) {
     return res.status(404).json({ success: false, error: 'User profile not found' });
   }
@@ -680,11 +763,18 @@ app.post('/api/admin/users/update-role', (req, res) => {
  */
 app.delete('/api/admin/users/:id', (req, res) => {
   const { id } = req.params;
-  const user = inMemoryUsers.find((u) => u.id === id);
+  const index = inMemoryUsers.findIndex(
+    (u) =>
+      u.id === id ||
+      u.email.toLowerCase() === id.toLowerCase() ||
+      u.auth_id === id
+  );
 
-  if (!user) {
+  if (index === -1) {
     return res.status(404).json({ success: false, error: 'User not found' });
   }
+
+  const user = inMemoryUsers[index];
 
   if (user.email.toLowerCase() === INITIAL_SUPER_ADMIN_EMAIL.toLowerCase()) {
     return res.status(403).json({
@@ -698,7 +788,6 @@ app.delete('/api/admin/users/:id', (req, res) => {
     dept.totalMembers -= 1;
   }
 
-  const index = inMemoryUsers.findIndex((u) => u.id === id);
   inMemoryUsers.splice(index, 1);
 
   res.json({ success: true, message: `User ${user.email} deleted successfully.` });
