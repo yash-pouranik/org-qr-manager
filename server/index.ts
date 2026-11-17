@@ -659,7 +659,16 @@ app.post('/api/admin/users', async (req, res) => {
  * Prohibits self-elevation and requires verified permissions.
  */
 app.post('/api/admin/users/update-role', (req, res) => {
-  const { targetUserId, newRole, newStatus, newDepartmentId, requesterEmail } = req.body;
+  const {
+    targetUserId,
+    newRole,
+    newStatus,
+    newDepartmentId,
+    requesterEmail,
+    firstName,
+    lastName,
+    phoneNumber,
+  } = req.body;
 
   if (!targetUserId) {
     return res.status(400).json({ success: false, error: 'Target user ID is required' });
@@ -732,6 +741,15 @@ app.post('/api/admin/users/update-role', (req, res) => {
   }
   if (newStatus) {
     targetUser.status = newStatus;
+  }
+  if (firstName !== undefined) {
+    targetUser.firstName = firstName.trim();
+  }
+  if (lastName !== undefined) {
+    targetUser.lastName = lastName.trim();
+  }
+  if (phoneNumber !== undefined) {
+    targetUser.phoneNumber = phoneNumber.trim();
   }
   if (newDepartmentId !== undefined) {
     const oldDept = inMemoryDepartments.find((d) => d.id === targetUser.departmentId);

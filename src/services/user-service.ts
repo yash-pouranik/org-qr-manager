@@ -20,6 +20,9 @@ export interface UpdateUserRoleInput {
   newStatus?: 'active' | 'inactive' | 'invited' | 'suspended'
   newDepartmentId?: string | null
   requesterEmail?: string
+  firstName?: string
+  lastName?: string
+  phoneNumber?: string
 }
 
 export interface UpdateProfileInput {

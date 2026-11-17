@@ -65,7 +65,7 @@ const formSchema = z
       return data.password === data.confirmPassword
     },
     {
-      message: "Passwords do not match.",
+      message: 'Passwords do not match.',
       path: ['confirmPassword'],
     }
   )
@@ -101,6 +101,10 @@ export function UsersActionDialog({
     queryFn: () => departmentService.getAll(),
   })
 
+  // Normalize initial role and department
+  const normalizedRole = currentRow?.role === 'superadmin' ? 'super_admin' : (currentRow?.role || 'member')
+  const initialDeptId = currentRow?.departmentId || '__unassigned__'
+
   const form = useForm<UserForm>({
     resolver: zodResolver(formSchema),
     values: isEdit && currentRow
@@ -110,8 +114,8 @@ export function UsersActionDialog({
           username: currentRow.username || '',
           email: currentRow.email || '',
           phoneNumber: currentRow.phoneNumber || '',
-          role: currentRow.role || 'member',
-          departmentId: currentRow.departmentId || '',
+          role: normalizedRole,
+          departmentId: initialDeptId,
           password: '',
           confirmPassword: '',
           isEdit: true,
@@ -123,7 +127,7 @@ export function UsersActionDialog({
           email: '',
           phoneNumber: '',
           role: isSuperAdmin ? 'manager' : 'member',
-          departmentId: !isSuperAdmin ? (assignedDepartmentId || '') : '',
+          departmentId: !isSuperAdmin ? (assignedDepartmentId || '__unassigned__') : '__unassigned__',
           password: '',
           confirmPassword: '',
           isEdit: false,
@@ -133,6 +137,11 @@ export function UsersActionDialog({
   const onSubmit = async (values: UserForm) => {
     try {
       setIsSubmitting(true)
+      const targetDeptId =
+        values.departmentId === '__unassigned__' || !values.departmentId
+          ? null
+          : values.departmentId
+
       if (isEdit && currentRow) {
         if (isSelf && values.role !== currentRow.role) {
           toast.error('Self-role alteration is strictly prohibited for security.')
@@ -151,10 +160,13 @@ export function UsersActionDialog({
         }
 
         await userService.updateRoleAndStatus({
-          targetUserId: currentRow.id,
+          targetUserId: currentRow.id || (currentRow as any)._id,
           newRole: values.role,
-          newDepartmentId: !isSuperAdmin ? (assignedDepartmentId || null) : (values.departmentId || null),
+          newDepartmentId: !isSuperAdmin ? (assignedDepartmentId || null) : targetDeptId,
           requesterEmail: currentAuthUser?.email,
+          firstName: values.firstName,
+          lastName: values.lastName,
+          phoneNumber: values.phoneNumber,
         })
         toast.success(`User ${values.email} updated successfully`)
       } else {
@@ -166,7 +178,7 @@ export function UsersActionDialog({
           password: values.password,
           phoneNumber: values.phoneNumber,
           role: !isSuperAdmin && (values.role === 'super_admin' || values.role === 'admin') ? 'member' : values.role,
-          departmentId: !isSuperAdmin ? (assignedDepartmentId || null) : (values.departmentId || null),
+          departmentId: !isSuperAdmin ? (assignedDepartmentId || null) : targetDeptId,
         })
         toast.success(`User ${values.email} created successfully`)
       }
@@ -203,12 +215,15 @@ export function UsersActionDialog({
 
   const departmentOptions = isSuperAdmin
     ? [
-        { label: 'Unassigned (No Department)', value: '' },
-        ...departments.map((d) => ({ label: d.name, value: d.id })),
+        { label: 'Unassigned (No Department)', value: '__unassigned__' },
+        ...departments.map((d: any) => ({
+          label: d.name,
+          value: String(d._id || d.id),
+        })),
       ]
     : departments
-        .filter((d) => d.id === assignedDepartmentId)
-        .map((d) => ({ label: d.name, value: d.id }))
+        .filter((d: any) => String(d._id || d.id) === assignedDepartmentId)
+        .map((d: any) => ({ label: d.name, value: String(d._id || d.id) }))
 
   return (
     <Dialog
@@ -323,7 +338,7 @@ export function UsersActionDialog({
                   <FormItem>
                     <FormLabel>Enterprise Role</FormLabel>
                     <SelectDropdown
-                      defaultValue={field.value}
+                      value={field.value}
                       onValueChange={field.onChange}
                       placeholder='Select role'
                       disabled={isSelf}
@@ -340,7 +355,7 @@ export function UsersActionDialog({
                   <FormItem>
                     <FormLabel>Department Scope</FormLabel>
                     <SelectDropdown
-                      defaultValue={field.value || ''}
+                      value={field.value || '__unassigned__'}
                       onValueChange={field.onChange}
                       placeholder='Select department'
                       disabled={!isSuperAdmin || isSelf}
