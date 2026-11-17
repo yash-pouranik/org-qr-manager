@@ -12,6 +12,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Department } from '@/types/department'
 import { departmentService } from '@/services/department-service'
+import { qrService } from '@/services/qr-service'
+import { userService } from '@/services/user-service'
 import { useAuthUser } from '@/context/auth-context'
 import { DepartmentCard } from './components/department-card'
 import { DepartmentDialog } from './components/department-dialog'
@@ -27,10 +29,74 @@ export function DepartmentsPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [selectedDepartment, setSelectedDepartment] = useState<Department | null>(null)
 
-  const { data: departments = [], isLoading } = useQuery({
+  const { data: rawDepartments = [], isLoading: loadingDepts } = useQuery({
     queryKey: ['departments'],
     queryFn: () => departmentService.getAll(),
   })
+
+  const { data: qrs = [], isLoading: loadingQrs } = useQuery({
+    queryKey: ['qr-codes', 'active'],
+    queryFn: () => qrService.getAll({ trash: false }),
+  })
+
+  const { data: users = [], isLoading: loadingUsers } = useQuery({
+    queryKey: ['admin-users'],
+    queryFn: () => userService.getAll(),
+  })
+
+  const isLoading = loadingDepts || loadingQrs || loadingUsers
+
+  // Dynamically enrich departments with live QR and Member counts
+  const departments = useMemo(() => {
+    return rawDepartments.map((dept) => {
+      const deptId = String(dept.id || '')
+      const deptName = String(dept.name || '').trim().toLowerCase()
+      const deptSlug = String(dept.slug || '').trim().toLowerCase()
+
+      // Calculate QRs belonging to this department
+      const matchingQrs = qrs.filter((q) => {
+        const qDeptId = String(q.departmentId || '')
+        const qDeptName = String(q.departmentName || '').trim().toLowerCase()
+        return (
+          qDeptId === deptId ||
+          qDeptId === deptSlug ||
+          (deptName && qDeptName === deptName)
+        )
+      })
+
+      // Calculate unique members belonging to this department
+      const memberEmails = new Set<string>()
+      if (dept.managerEmail) {
+        memberEmails.add(dept.managerEmail.trim().toLowerCase())
+      }
+      for (const u of users) {
+        const uEmail = (u.email || '').trim().toLowerCase()
+        if (!uEmail) continue
+        const uDeptId = String(u.departmentId || '')
+        const uDeptName = String(u.departmentName || '').trim().toLowerCase()
+        if (
+          uDeptId === deptId ||
+          uDeptId === deptSlug ||
+          (deptName && uDeptName === deptName)
+        ) {
+          memberEmails.add(uEmail)
+        }
+      }
+
+      const totalQrs = Math.max(matchingQrs.length, dept.totalQrs || 0)
+      const totalMembers = Math.max(
+        memberEmails.size,
+        dept.totalMembers || 0,
+        dept.managerEmail ? 1 : 0
+      )
+
+      return {
+        ...dept,
+        totalQrs,
+        totalMembers,
+      }
+    })
+  }, [rawDepartments, qrs, users])
 
   const filteredDepartments = useMemo(() => {
     if (!searchQuery.trim()) return departments
@@ -70,6 +136,8 @@ export function DepartmentsPage() {
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['departments'] })
+    queryClient.invalidateQueries({ queryKey: ['qr-codes'] })
+    queryClient.invalidateQueries({ queryKey: ['admin-users'] })
   }
 
   return (

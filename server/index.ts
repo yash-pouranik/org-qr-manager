@@ -275,33 +275,125 @@ app.get('/r/:shortCode', async (req, res) => {
 
 /**
  * List all departments (urBackend Database backed with offline fallback)
+ * Computes dynamic QR counts and member counts in real time.
  */
 app.get('/api/admin/departments', async (_req, res) => {
+  // 1. Gather all active QR codes
+  let allQrs: any[] = [...inMemoryQrs];
+  if (URBACKEND_SECRET_KEY && URBACKEND_SECRET_KEY.startsWith('sk_live_')) {
+    try {
+      const liveQrs = await serverUrClient.db.getAll('qr_codes');
+      if (Array.isArray(liveQrs) && liveQrs.length > 0) {
+        allQrs = liveQrs;
+      }
+    } catch (qrErr) {
+      console.error('Error fetching live QRs for department calculation:', qrErr);
+    }
+  }
+
+  // 2. Gather all users
+  const allUsersMap = new Map<string, any>();
+  for (const u of inMemoryUsers) {
+    if (u.email) allUsersMap.set(u.email.toLowerCase(), u);
+  }
+
+  if (URBACKEND_SECRET_KEY && URBACKEND_SECRET_KEY.startsWith('sk_live_')) {
+    try {
+      const logsResp = await fetch(`${URBACKEND_BASE_URL}/api/data/activity_logs?limit=500`, {
+        headers: { 'x-api-key': URBACKEND_SECRET_KEY },
+      });
+      const logsResult = await logsResp.json();
+      const logsItems = logsResult?.data?.items || (Array.isArray(logsResult?.data) ? logsResult.data : []);
+      if (Array.isArray(logsItems)) {
+        for (const log of logsItems) {
+          if (log.action === 'user_created' && log.metadata && log.metadata.email) {
+            const email = log.metadata.email.toLowerCase();
+            if (!allUsersMap.has(email)) {
+              allUsersMap.set(email, {
+                email,
+                departmentId: log.metadata.departmentId,
+                departmentName: log.metadata.departmentName,
+              });
+            }
+          }
+        }
+      }
+    } catch (uErr) {
+      console.error('Error fetching users for department calculation:', uErr);
+    }
+  }
+
+  // 3. Gather departments
+  let depts: any[] = inMemoryDepartments;
   if (URBACKEND_SECRET_KEY && URBACKEND_SECRET_KEY.startsWith('sk_live_')) {
     try {
       const liveDepts = await serverUrClient.db.getAll('departments');
       if (Array.isArray(liveDepts) && liveDepts.length > 0) {
-        const formatted = liveDepts.map((d: any) => ({
-          id: d._id || d.id,
-          name: d.name,
-          slug: d.slug,
-          description: d.description || '',
-          managerName: d.manager_name || d.managerName || 'Unassigned',
-          managerEmail: d.manager_email || d.managerEmail || '',
-          status: d.status || 'active',
-          totalQrs: Number(d.total_qrs ?? d.totalQrs ?? 0),
-          totalMembers: Number(d.total_members ?? d.totalMembers ?? 0),
-        }));
-        return res.json({ success: true, data: formatted });
+        depts = liveDepts;
       }
     } catch (err) {
       console.error('Error fetching live departments from urBackend:', err);
     }
   }
 
+  // 4. Calculate actual totalQrs and totalMembers dynamically
+  const userList = Array.from(allUsersMap.values());
+  const formatted = depts.map((d: any) => {
+    const deptId = String(d._id || d.id || '');
+    const deptName = String(d.name || '').trim().toLowerCase();
+    const deptSlug = String(d.slug || '').trim().toLowerCase();
+    const managerEmail = (d.manager_email || d.managerEmail || '').trim().toLowerCase();
+
+    // Matching active QRs
+    const deptQrs = allQrs.filter((q: any) => {
+      if (q.isDeleted || q.is_deleted || q.status === 'archived') return false;
+      const qDeptId = String(q.department_id || q.departmentId || '');
+      const qDeptName = String(q.department_name || q.departmentName || '').trim().toLowerCase();
+      return (
+        qDeptId === deptId ||
+        qDeptId === deptSlug ||
+        (deptName && qDeptName === deptName)
+      );
+    });
+
+    // Matching unique members
+    const memberEmails = new Set<string>();
+    if (managerEmail) {
+      memberEmails.add(managerEmail);
+    }
+    for (const u of userList) {
+      const uEmail = (u.email || '').trim().toLowerCase();
+      if (!uEmail) continue;
+      const uDeptId = String(u.departmentId || u.department_id || '');
+      const uDeptName = String(u.departmentName || u.department_name || '').trim().toLowerCase();
+      if (
+        uDeptId === deptId ||
+        uDeptId === deptSlug ||
+        (deptName && uDeptName === deptName)
+      ) {
+        memberEmails.add(uEmail);
+      }
+    }
+
+    const dynamicQrs = deptQrs.length;
+    const dynamicMembers = memberEmails.size;
+
+    return {
+      id: deptId,
+      name: d.name,
+      slug: d.slug,
+      description: d.description || '',
+      managerName: d.manager_name || d.managerName || 'Unassigned',
+      managerEmail: d.manager_email || d.managerEmail || '',
+      status: d.status || 'active',
+      totalQrs: Math.max(dynamicQrs, Number(d.total_qrs ?? d.totalQrs ?? 0)),
+      totalMembers: Math.max(dynamicMembers, Number(d.total_members ?? d.totalMembers ?? 0)),
+    };
+  });
+
   res.json({
     success: true,
-    data: inMemoryDepartments,
+    data: formatted,
   });
 });
 
