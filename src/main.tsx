@@ -15,6 +15,7 @@ import { FontProvider } from './context/font-provider'
 import { ThemeProvider } from './context/theme-provider'
 import { UrProvider } from '@urbackend/react'
 import { AppAuthProvider } from './context/auth-context'
+import { NotFoundError } from './features/errors/not-found-error'
 // Generated Routes
 import { routeTree } from './routeTree.gen'
 // Styles
@@ -80,6 +81,7 @@ const router = createRouter({
   context: { queryClient },
   defaultPreload: 'intent',
   defaultPreloadStaleTime: 0,
+  defaultNotFoundComponent: NotFoundError,
 })
 
 // Register the router instance for type safety

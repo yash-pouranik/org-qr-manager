@@ -1748,11 +1748,23 @@ app.post('/api/admin/analytics/simulate-scan', (req, res) => {
 const distPath = path.resolve(process.cwd(), 'dist');
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
-  app.get('*', (req, res, next) => {
+  // Express 5 compatible catch-all for SPA client-side routing
+  app.get('/{*splat}', (req, res, next) => {
     if (req.path.startsWith('/api/') || req.path.startsWith('/r/')) {
       return next();
     }
     res.sendFile(path.join(distPath, 'index.html'));
+  });
+
+  // Robust fallback for any GET requests matching SPA client routes
+  app.use((req, res, next) => {
+    if (req.method === 'GET' && !req.path.startsWith('/api/') && !req.path.startsWith('/r/')) {
+      const indexPath = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        return res.sendFile(indexPath);
+      }
+    }
+    next();
   });
 }
 
