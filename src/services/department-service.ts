@@ -1,63 +1,79 @@
 import { Department, CreateDepartmentInput, UpdateDepartmentInput } from '@/types/department'
 import { apiUrl } from '@/lib/api-client'
 
+const CACHE_KEY = 'org_departments_cache'
+
 const FALLBACK_DEPARTMENTS: Department[] = [
   {
-    id: 'dept_01',
+    id: '6af787790d2e1b4e3b7cbf71',
     name: 'Donations & Seva',
     slug: 'donations',
     description: 'Centralized fund collection, seva contributions, and donor receipts.',
-    managerName: 'Organization Administrator',
-    managerEmail: 'admin@organization.local',
+    managerName: 'Bhaja Gauranga Dasa',
+    managerEmail: 'bhajagaurangadasa.mmd@gmail.com',
     status: 'active',
     totalQrs: 0,
-    totalMembers: 0,
+    totalMembers: 1,
   },
   {
-    id: 'dept_02',
+    id: '6af787790d2e1b4e3b7cbf7d',
     name: 'Events & Festivals',
     slug: 'events',
     description: 'Festival registrations, VIP passes, cultural programs, and crowd logistics.',
-    managerName: 'Events Lead',
+    managerName: 'Events Team',
     managerEmail: 'events@organization.local',
     status: 'active',
     totalQrs: 0,
-    totalMembers: 0,
+    totalMembers: 1,
   },
   {
-    id: 'dept_03',
-    name: 'Kitchen & Prasadam',
-    slug: 'kitchen',
-    description: 'Annadhanam sponsorship, daily meal passes, and prasad distribution counters.',
-    managerName: 'Kitchen Incharge',
-    managerEmail: 'kitchen@organization.local',
-    status: 'active',
-    totalQrs: 0,
-    totalMembers: 0,
-  },
-  {
-    id: 'dept_04',
+    id: '6af7877a0d2e1b4e3b7cbf95',
     name: 'Book Distribution',
     slug: 'book-distribution',
     description: 'Literature counters, publications, educational kiosks, and outreach books.',
-    managerName: 'Literature Coordinator',
-    managerEmail: 'books@organization.local',
+    managerName: 'Bhaja Gauranga Dasa',
+    managerEmail: 'bhajagaurangadasa.mmd@gmail.com',
     status: 'active',
     totalQrs: 0,
-    totalMembers: 0,
+    totalMembers: 1,
   },
   {
-    id: 'dept_05',
+    id: '6af7877a0d2e1b4e3b7cbfa1',
     name: 'Administration',
-    slug: 'administration',
-    description: 'General temple management, IT infrastructure, access badges, and audit ops.',
-    managerName: 'Admin Officer',
-    managerEmail: 'admin@organization.local',
+    slug: 'admin',
+    description: 'Executive governance, IT systems, compliance, and department coordination.',
+    managerName: 'Yash Pouranik',
+    managerEmail: 'yashpouranik124@gmail.com',
     status: 'active',
     totalQrs: 0,
-    totalMembers: 0,
+    totalMembers: 1,
   },
 ]
+
+function getCachedDepartments(): Department[] | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed
+      }
+    }
+  } catch {
+    // Ignore cache parse errors
+  }
+  return null
+}
+
+function saveCachedDepartments(depts: Department[]) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(depts))
+  } catch {
+    // Ignore storage quota errors
+  }
+}
 
 export const departmentService = {
   async getAll(): Promise<Department[]> {
@@ -66,12 +82,15 @@ export const departmentService = {
       if (!res.ok) throw new Error(`HTTP error ${res.status}`)
       const data = await res.json()
       if (data && data.success && Array.isArray(data.data)) {
+        saveCachedDepartments(data.data)
         return data.data
       }
     } catch {
-      // Return fallback when offline or during testing
+      // Return cached live data when offline or server warming up
+      const cached = getCachedDepartments()
+      if (cached) return cached
     }
-    return FALLBACK_DEPARTMENTS
+    return getCachedDepartments() || FALLBACK_DEPARTMENTS
   },
 
   async create(input: CreateDepartmentInput): Promise<Department> {
@@ -86,7 +105,11 @@ export const departmentService = {
       throw new Error(result.error || 'Failed to create department')
     }
 
-    return result.data
+    const created = result.data
+    const current = getCachedDepartments() || [...FALLBACK_DEPARTMENTS]
+    saveCachedDepartments([...current, created])
+
+    return created
   },
 
   async update(id: string, input: UpdateDepartmentInput): Promise<Department> {
@@ -101,7 +124,14 @@ export const departmentService = {
       throw new Error(result.error || 'Failed to update department')
     }
 
-    return result.data
+    const updated = result.data
+    const current = getCachedDepartments() || [...FALLBACK_DEPARTMENTS]
+    const updatedList = current.map((d) =>
+      d.id === id || d.slug === id ? { ...d, ...input } : d
+    )
+    saveCachedDepartments(updatedList)
+
+    return updated
   },
 
   async delete(id: string): Promise<{ success: boolean; message?: string }> {
@@ -113,6 +143,10 @@ export const departmentService = {
     if (!res.ok || !result.success) {
       throw new Error(result.error || 'Failed to delete department')
     }
+
+    const current = getCachedDepartments() || [...FALLBACK_DEPARTMENTS]
+    const filtered = current.filter((d) => d.id !== id && d.slug !== id)
+    saveCachedDepartments(filtered)
 
     return result
   },

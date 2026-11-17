@@ -29,8 +29,10 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const DAILY_SALT_SECRET = process.env.DAILY_SALT_SECRET || 'org_qr_default_salt_2026';
 const URBACKEND_BASE_URL = (
-  process.env.URBACKEND_BASE_URL || 'https://urbackend-api.onrender.com'
-).replace(/\/$/, '');
+  process.env.URBACKEND_BASE_URL ||
+  process.env.VITE_URBACKEND_BASE_URL ||
+  'https://urbackend-api.onrender.com'
+).replace(/\/+$/, '');
 const URBACKEND_SECRET_KEY = process.env.URBACKEND_SECRET_KEY || '';
 const INITIAL_SUPER_ADMIN_EMAIL =
   process.env.INITIAL_SUPER_ADMIN_EMAIL || 'admin@organization.local';
@@ -95,67 +97,54 @@ interface DepartmentRecord {
 
 const inMemoryDepartments: DepartmentRecord[] = [
   {
-    id: 'dept_01',
+    id: '6af787790d2e1b4e3b7cbf71',
     name: 'Donations & Seva',
     slug: 'donations',
     description: 'Centralized fund collection, seva contributions, and donor receipts.',
-    managerName: 'Organization Administrator',
-    managerEmail: 'admin@organization.local',
+    managerName: 'Bhaja Gauranga Dasa',
+    managerEmail: 'bhajagaurangadasa.mmd@gmail.com',
     status: 'active',
     totalQrs: 0,
-    totalMembers: 0,
+    totalMembers: 1,
     createdAt: new Date('2026-01-01').toISOString(),
     updatedAt: new Date('2026-01-01').toISOString(),
   },
   {
-    id: 'dept_02',
+    id: '6af787790d2e1b4e3b7cbf7d',
     name: 'Events & Festivals',
     slug: 'events',
     description: 'Festival registrations, VIP passes, cultural programs, and crowd logistics.',
-    managerName: 'Events Lead',
+    managerName: 'Events Team',
     managerEmail: 'events@organization.local',
     status: 'active',
     totalQrs: 0,
-    totalMembers: 0,
+    totalMembers: 1,
     createdAt: new Date('2026-01-01').toISOString(),
     updatedAt: new Date('2026-01-01').toISOString(),
   },
   {
-    id: 'dept_03',
-    name: 'Kitchen & Prasadam',
-    slug: 'kitchen',
-    description: 'Annadhanam sponsorship, daily meal passes, and prasad distribution counters.',
-    managerName: 'Kitchen Incharge',
-    managerEmail: 'kitchen@organization.local',
-    status: 'active',
-    totalQrs: 0,
-    totalMembers: 0,
-    createdAt: new Date('2026-01-01').toISOString(),
-    updatedAt: new Date('2026-01-01').toISOString(),
-  },
-  {
-    id: 'dept_04',
+    id: '6af7877a0d2e1b4e3b7cbf95',
     name: 'Book Distribution',
     slug: 'book-distribution',
     description: 'Literature counters, publications, educational kiosks, and outreach books.',
-    managerName: 'Literature Coordinator',
-    managerEmail: 'books@organization.local',
+    managerName: 'Bhaja Gauranga Dasa',
+    managerEmail: 'bhajagaurangadasa.mmd@gmail.com',
     status: 'active',
     totalQrs: 0,
-    totalMembers: 0,
+    totalMembers: 1,
     createdAt: new Date('2026-01-01').toISOString(),
     updatedAt: new Date('2026-01-01').toISOString(),
   },
   {
-    id: 'dept_05',
+    id: '6af7877a0d2e1b4e3b7cbfa1',
     name: 'Administration',
-    slug: 'administration',
-    description: 'General temple management, IT infrastructure, access badges, and audit ops.',
-    managerName: 'Admin Officer',
-    managerEmail: 'admin@organization.local',
+    slug: 'admin',
+    description: 'Executive governance, IT systems, compliance, and department coordination.',
+    managerName: 'Yash Pouranik',
+    managerEmail: 'yashpouranik124@gmail.com',
     status: 'active',
     totalQrs: 0,
-    totalMembers: 0,
+    totalMembers: 1,
     createdAt: new Date('2026-01-01').toISOString(),
     updatedAt: new Date('2026-01-01').toISOString(),
   },
@@ -278,123 +267,131 @@ app.get('/r/:shortCode', async (req, res) => {
  * Computes dynamic QR counts and member counts in real time.
  */
 app.get('/api/admin/departments', async (_req, res) => {
-  // 1. Gather all active QR codes
-  let allQrs: any[] = [...inMemoryQrs];
-  if (URBACKEND_SECRET_KEY && URBACKEND_SECRET_KEY.startsWith('sk_live_')) {
-    try {
-      const liveQrs = await serverUrClient.db.getAll('qr_codes');
-      if (Array.isArray(liveQrs) && liveQrs.length > 0) {
-        allQrs = liveQrs;
+  try {
+    // 1. Gather all active QR codes
+    let allQrs: any[] = [...inMemoryQrCodes];
+    if (URBACKEND_SECRET_KEY && URBACKEND_SECRET_KEY.startsWith('sk_live_')) {
+      try {
+        const liveQrs = await serverUrClient.db.getAll('qr_codes');
+        if (Array.isArray(liveQrs) && liveQrs.length > 0) {
+          allQrs = liveQrs;
+        }
+      } catch (qrErr) {
+        console.error('Error fetching live QRs for department calculation:', qrErr);
       }
-    } catch (qrErr) {
-      console.error('Error fetching live QRs for department calculation:', qrErr);
     }
-  }
 
-  // 2. Gather all users
-  const allUsersMap = new Map<string, any>();
-  for (const u of inMemoryUsers) {
-    if (u.email) allUsersMap.set(u.email.toLowerCase(), u);
-  }
+    // 2. Gather all users
+    const allUsersMap = new Map<string, any>();
+    for (const u of inMemoryUsers) {
+      if (u.email) allUsersMap.set(u.email.toLowerCase(), u);
+    }
 
-  if (URBACKEND_SECRET_KEY && URBACKEND_SECRET_KEY.startsWith('sk_live_')) {
-    try {
-      const logsResp = await fetch(`${URBACKEND_BASE_URL}/api/data/activity_logs?limit=500`, {
-        headers: { 'x-api-key': URBACKEND_SECRET_KEY },
-      });
-      const logsResult = await logsResp.json();
-      const logsItems = logsResult?.data?.items || (Array.isArray(logsResult?.data) ? logsResult.data : []);
-      if (Array.isArray(logsItems)) {
-        for (const log of logsItems) {
-          if (log.action === 'user_created' && log.metadata && log.metadata.email) {
-            const email = log.metadata.email.toLowerCase();
-            if (!allUsersMap.has(email)) {
-              allUsersMap.set(email, {
-                email,
-                departmentId: log.metadata.departmentId,
-                departmentName: log.metadata.departmentName,
-              });
+    if (URBACKEND_SECRET_KEY && URBACKEND_SECRET_KEY.startsWith('sk_live_')) {
+      try {
+        const logsResp = await fetch(`${URBACKEND_BASE_URL}/api/data/activity_logs?limit=500`, {
+          headers: { 'x-api-key': URBACKEND_SECRET_KEY },
+        });
+        const logsResult = await logsResp.json();
+        const logsItems = logsResult?.data?.items || (Array.isArray(logsResult?.data) ? logsResult.data : []);
+        if (Array.isArray(logsItems)) {
+          for (const log of logsItems) {
+            if (log.action === 'user_created' && log.metadata && log.metadata.email) {
+              const email = log.metadata.email.toLowerCase();
+              if (!allUsersMap.has(email)) {
+                allUsersMap.set(email, {
+                  email,
+                  departmentId: log.metadata.departmentId,
+                  departmentName: log.metadata.departmentName,
+                });
+              }
             }
           }
         }
+      } catch (uErr) {
+        console.error('Error fetching users for department calculation:', uErr);
       }
-    } catch (uErr) {
-      console.error('Error fetching users for department calculation:', uErr);
     }
-  }
 
-  // 3. Gather departments
-  let depts: any[] = inMemoryDepartments;
-  if (URBACKEND_SECRET_KEY && URBACKEND_SECRET_KEY.startsWith('sk_live_')) {
-    try {
-      const liveDepts = await serverUrClient.db.getAll('departments');
-      if (Array.isArray(liveDepts) && liveDepts.length > 0) {
-        depts = liveDepts;
+    // 3. Gather departments from urBackend MongoDB
+    let depts: any[] = inMemoryDepartments;
+    if (URBACKEND_SECRET_KEY && URBACKEND_SECRET_KEY.startsWith('sk_live_')) {
+      try {
+        const liveDepts = await serverUrClient.db.getAll('departments');
+        if (Array.isArray(liveDepts) && liveDepts.length > 0) {
+          depts = liveDepts.filter((d: any) => !d.isDeleted && d.status !== 'archived');
+        }
+      } catch (err) {
+        console.error('Error fetching live departments from urBackend:', err);
       }
-    } catch (err) {
-      console.error('Error fetching live departments from urBackend:', err);
     }
-  }
 
-  // 4. Calculate actual totalQrs and totalMembers dynamically
-  const userList = Array.from(allUsersMap.values());
-  const formatted = depts.map((d: any) => {
-    const deptId = String(d._id || d.id || '');
-    const deptName = String(d.name || '').trim().toLowerCase();
-    const deptSlug = String(d.slug || '').trim().toLowerCase();
-    const managerEmail = (d.manager_email || d.managerEmail || '').trim().toLowerCase();
+    // 4. Calculate actual totalQrs and totalMembers dynamically
+    const userList = Array.from(allUsersMap.values());
+    const formatted = depts.map((d: any) => {
+      const deptId = String(d._id || d.id || '');
+      const deptName = String(d.name || '').trim().toLowerCase();
+      const deptSlug = String(d.slug || '').trim().toLowerCase();
+      const managerEmail = (d.manager_email || d.managerEmail || '').trim().toLowerCase();
 
-    // Matching active QRs
-    const deptQrs = allQrs.filter((q: any) => {
-      if (q.isDeleted || q.is_deleted || q.status === 'archived') return false;
-      const qDeptId = String(q.department_id || q.departmentId || '');
-      const qDeptName = String(q.department_name || q.departmentName || '').trim().toLowerCase();
-      return (
-        qDeptId === deptId ||
-        qDeptId === deptSlug ||
-        (deptName && qDeptName === deptName)
-      );
+      // Matching active QRs
+      const deptQrs = allQrs.filter((q: any) => {
+        if (q.isDeleted || q.is_deleted || q.status === 'archived') return false;
+        const qDeptId = String(q.department_id || q.departmentId || '');
+        const qDeptName = String(q.department_name || q.departmentName || '').trim().toLowerCase();
+        return (
+          qDeptId === deptId ||
+          qDeptId === deptSlug ||
+          (deptName && qDeptName === deptName)
+        );
+      });
+
+      // Matching unique members
+      const memberEmails = new Set<string>();
+      if (managerEmail) {
+        memberEmails.add(managerEmail);
+      }
+      for (const u of userList) {
+        const uEmail = (u.email || '').trim().toLowerCase();
+        if (!uEmail) continue;
+        const uDeptId = String(u.departmentId || u.department_id || '');
+        const uDeptName = String(u.departmentName || u.department_name || '').trim().toLowerCase();
+        if (
+          uDeptId === deptId ||
+          uDeptId === deptSlug ||
+          (deptName && uDeptName === deptName)
+        ) {
+          memberEmails.add(uEmail);
+        }
+      }
+
+      const dynamicQrs = deptQrs.length;
+      const dynamicMembers = memberEmails.size;
+
+      return {
+        id: deptId,
+        name: d.name,
+        slug: d.slug,
+        description: d.description || '',
+        managerName: d.manager_name || d.managerName || 'Unassigned',
+        managerEmail: d.manager_email || d.managerEmail || '',
+        status: d.status || 'active',
+        totalQrs: Math.max(dynamicQrs, Number(d.total_qrs ?? d.totalQrs ?? 0)),
+        totalMembers: Math.max(dynamicMembers, Number(d.total_members ?? d.totalMembers ?? 0)),
+      };
     });
 
-    // Matching unique members
-    const memberEmails = new Set<string>();
-    if (managerEmail) {
-      memberEmails.add(managerEmail);
-    }
-    for (const u of userList) {
-      const uEmail = (u.email || '').trim().toLowerCase();
-      if (!uEmail) continue;
-      const uDeptId = String(u.departmentId || u.department_id || '');
-      const uDeptName = String(u.departmentName || u.department_name || '').trim().toLowerCase();
-      if (
-        uDeptId === deptId ||
-        uDeptId === deptSlug ||
-        (deptName && uDeptName === deptName)
-      ) {
-        memberEmails.add(uEmail);
-      }
-    }
-
-    const dynamicQrs = deptQrs.length;
-    const dynamicMembers = memberEmails.size;
-
-    return {
-      id: deptId,
-      name: d.name,
-      slug: d.slug,
-      description: d.description || '',
-      managerName: d.manager_name || d.managerName || 'Unassigned',
-      managerEmail: d.manager_email || d.managerEmail || '',
-      status: d.status || 'active',
-      totalQrs: Math.max(dynamicQrs, Number(d.total_qrs ?? d.totalQrs ?? 0)),
-      totalMembers: Math.max(dynamicMembers, Number(d.total_members ?? d.totalMembers ?? 0)),
-    };
-  });
-
-  res.json({
-    success: true,
-    data: formatted,
-  });
+    res.json({
+      success: true,
+      data: formatted,
+    });
+  } catch (error: any) {
+    console.error('Failed to get departments:', error);
+    res.json({
+      success: true,
+      data: inMemoryDepartments,
+    });
+  }
 });
 
 /**
@@ -464,13 +461,23 @@ app.put('/api/admin/departments/:id', async (req, res) => {
       if (managerEmail !== undefined) patchData.manager_email = managerEmail;
       if (status !== undefined) patchData.status = status;
 
-      await serverUrClient.db.patch('departments', id, patchData).catch(() => {});
+      // First attempt direct patch by id
+      try {
+        await serverUrClient.db.patch('departments', id, patchData);
+      } catch {
+        // If direct id lookup fails, search by slug or alternate id
+        const allDepts = await serverUrClient.db.getAll('departments').catch(() => []);
+        const target = allDepts.find((d: any) => d._id === id || d.id === id || d.slug === id);
+        if (target && (target._id || target.id)) {
+          await serverUrClient.db.patch('departments', target._id || target.id, patchData).catch(() => {});
+        }
+      }
     } catch (err) {
       console.error('Error patching department on urBackend:', err);
     }
   }
 
-  const index = inMemoryDepartments.findIndex((d) => d.id === id);
+  const index = inMemoryDepartments.findIndex((d) => d.id === id || d.slug === id);
   if (index !== -1) {
     const current = inMemoryDepartments[index];
     inMemoryDepartments[index] = {
@@ -505,13 +512,21 @@ app.delete('/api/admin/departments/:id', async (req, res) => {
 
   if (URBACKEND_SECRET_KEY && URBACKEND_SECRET_KEY.startsWith('sk_live_')) {
     try {
-      await serverUrClient.db.delete('departments', id).catch(() => {});
+      try {
+        await serverUrClient.db.delete('departments', id);
+      } catch {
+        const allDepts = await serverUrClient.db.getAll('departments').catch(() => []);
+        const target = allDepts.find((d: any) => d._id === id || d.id === id || d.slug === id);
+        if (target && (target._id || target.id)) {
+          await serverUrClient.db.delete('departments', target._id || target.id).catch(() => {});
+        }
+      }
     } catch (err) {
       console.error('Error deleting department on urBackend:', err);
     }
   }
 
-  const index = inMemoryDepartments.findIndex((d) => d.id === id);
+  const index = inMemoryDepartments.findIndex((d) => d.id === id || d.slug === id);
   if (index !== -1) {
     inMemoryDepartments.splice(index, 1);
   }
