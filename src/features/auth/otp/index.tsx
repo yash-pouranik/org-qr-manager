@@ -13,29 +13,27 @@ import { OtpForm } from './components/otp-form'
 export function Otp() {
   return (
     <AuthLayout>
-      <Card className='max-w-md gap-4'>
+      <Card className='max-w-md gap-4 sm:min-w-md'>
         <CardHeader>
-          <CardTitle className='text-base tracking-tight'>
-            Two-factor Authentication
+          <CardTitle className='text-lg tracking-tight'>
+            Reset Password
           </CardTitle>
           <CardDescription>
-            Please enter the authentication code. <br /> We have sent the
-            authentication code to your email.
+            Enter the 6-digit verification code sent to your email along with your new password.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <OtpForm />
         </CardContent>
         <CardFooter>
-          <p className='px-8 text-center text-sm text-muted-foreground'>
-            Haven't received it?{' '}
+          <p className='px-8 text-center text-sm text-muted-foreground w-full'>
+            Remember your credentials?{' '}
             <Link
               to='/sign-in'
               className='underline underline-offset-4 hover:text-primary'
             >
-              Resend a new code.
+              Back to Sign in
             </Link>
-            .
           </p>
         </CardFooter>
       </Card>

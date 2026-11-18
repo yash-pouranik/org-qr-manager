@@ -5,7 +5,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate } from '@tanstack/react-router'
 import { ArrowRight, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useAuth } from '@urbackend/react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -17,9 +16,13 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { requestPasswordReset } from '@/lib/urbackend'
 
 const formSchema = z.object({
-  email: z.string().email('Please enter a valid organization email.'),
+  email: z
+    .string()
+    .min(1, 'Please enter your email.')
+    .email('Please enter a valid organization email.'),
 })
 
 export function ForgotPasswordForm({
@@ -28,7 +31,6 @@ export function ForgotPasswordForm({
 }: React.HTMLAttributes<HTMLFormElement>) {
   const navigate = useNavigate()
   const [isLoading, setIsLoading] = useState(false)
-  const urAuth = useAuth()
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -38,17 +40,15 @@ export function ForgotPasswordForm({
   async function onSubmit(data: z.infer<typeof formSchema>) {
     setIsLoading(true)
     try {
-      if (urAuth && typeof urAuth.requestPasswordReset === 'function') {
-        try {
-          await urAuth.requestPasswordReset({ email: data.email })
-        } catch (err: any) {
-          console.warn('Live reset request offline or fallback:', err?.message)
-        }
+      await requestPasswordReset(data.email)
+
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('reset_email', data.email)
       }
 
-      toast.success(`Password reset link sent to ${data.email}`)
+      toast.success(`6-digit OTP code sent to ${data.email}`)
       form.reset()
-      navigate({ to: '/sign-in' })
+      navigate({ to: '/otp', search: { email: data.email } })
     } catch (err: any) {
       toast.error(err?.message || 'Failed to request password reset.')
     } finally {

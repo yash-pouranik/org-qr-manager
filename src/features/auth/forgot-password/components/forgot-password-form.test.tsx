@@ -15,6 +15,10 @@ vi.mock('@/lib/utils', async (orig) => ({
   sleep: vi.fn(() => Promise.resolve()),
 }))
 
+vi.mock('@/lib/urbackend', () => ({
+  requestPasswordReset: vi.fn().mockResolvedValue({ success: true, message: 'OTP sent' }),
+}))
+
 describe('ForgotPasswordForm', () => {
   let screen: RenderResult
   let emailInput: Locator
@@ -45,7 +49,9 @@ describe('ForgotPasswordForm', () => {
     await userEvent.click(continueButton)
 
     await vi.waitFor(() =>
-      expect(navigateMock).toHaveBeenCalledWith({ to: '/otp' })
+      expect(navigateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ to: '/otp' })
+      )
     )
 
     // Form should reset on success
