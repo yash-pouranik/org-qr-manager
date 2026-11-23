@@ -45,7 +45,14 @@ export const serverUrClient = new UrBackendClient({
   baseUrl: URBACKEND_BASE_URL,
 });
 
-app.use(cors());
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'Accept', 'Origin', 'X-Requested-With'],
+  })
+);
 app.use(express.json());
 
 // In-memory store for development / offline fallback
