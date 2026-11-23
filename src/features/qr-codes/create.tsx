@@ -10,7 +10,10 @@ import {
   Building2,
   Save,
   CheckCircle2,
+  Zap,
+  RefreshCw,
 } from 'lucide-react'
+import { getShortUrl, getRedirectBaseUrl } from '@/lib/api-client'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ProfileDropdown } from '@/components/profile-dropdown'
@@ -72,7 +75,9 @@ export function QrGeneratorPage() {
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>(
     assignedDepartmentId || ''
   )
-  const [category, setCategory] = useState<'dynamic' | 'static'>('static')
+  const [category, setCategory] = useState<'dynamic' | 'static'>('dynamic')
+  const generateShortCode = () => Math.random().toString(36).substring(2, 8).toLowerCase()
+  const [shortCode, setShortCode] = useState<string>(() => generateShortCode())
   const [isSaving, setIsSaving] = useState(false)
 
   // Selected Content Type
@@ -238,6 +243,7 @@ export function QrGeneratorPage() {
             : `static_${contentType}`,
         destinationUrl: serializedData,
         departmentId: finalDepartmentId,
+        shortCode: category === 'dynamic' ? shortCode.trim().toLowerCase() : undefined,
         styleOptions,
         donationConfig:
           contentType === 'upi'
@@ -346,11 +352,46 @@ export function QrGeneratorPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value='static'>Direct Static (Offline)</SelectItem>
                       <SelectItem value='dynamic'>Dynamic (Tracked & Editable)</SelectItem>
+                      <SelectItem value='static'>Direct Static (Offline)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
+                {category === 'dynamic' && (
+                  <div className='rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2'>
+                    <div className='flex items-center justify-between'>
+                      <Label htmlFor='dynamic-short-code' className='text-xs font-semibold flex items-center gap-1 text-primary'>
+                        <Zap className='size-3 text-amber-500' /> Dynamic Short Link
+                      </Label>
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='sm'
+                        onClick={() => setShortCode(generateShortCode())}
+                        className='h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground'
+                        title='Generate new random short code'
+                      >
+                        <RefreshCw className='size-2.5 me-1' /> Randomize
+                      </Button>
+                    </div>
+                    <div className='flex items-center rounded-md border border-input bg-background px-2 py-1 text-xs shadow-xs'>
+                      <span className='text-muted-foreground select-none font-mono text-[11px]'>
+                        {getRedirectBaseUrl()}/r/
+                      </span>
+                      <input
+                        id='dynamic-short-code'
+                        value={shortCode}
+                        onChange={(e) => setShortCode(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+                        placeholder='custom-slug'
+                        className='ms-1 flex-1 bg-transparent font-mono font-semibold text-foreground outline-none text-xs'
+                      />
+                    </div>
+                    <p className='text-[10px] text-muted-foreground'>
+                      This dynamic URL is encoded permanently in the QR code. You can update the target destination anytime later without re-printing.
+                    </p>
+                  </div>
+                )}
 
                 <div className='space-y-1.5'>
                   <Label className='text-xs font-medium'>Assigned Department</Label>
@@ -513,15 +554,27 @@ export function QrGeneratorPage() {
                 contentType={contentType}
                 styleOptions={styleOptions}
                 qrName={qrName}
+                category={category}
+                shortCode={shortCode}
+                shortUrl={category === 'dynamic' ? getShortUrl(shortCode) : undefined}
               />
 
-              {/* Security & Offline Guarantee Pill */}
-              <div className='flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground'>
-                <CheckCircle2 className='size-4 shrink-0 text-primary' />
-                <span>
-                  <strong>100% Offline Static Guarantee:</strong> Static QR codes store data directly inside the visual matrix. They never expire and function forever without internet.
-                </span>
-              </div>
+              {/* Redirection / Security Guarantee Pill */}
+              {category === 'dynamic' ? (
+                <div className='flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-800 dark:text-emerald-300'>
+                  <Zap className='size-4 shrink-0 text-amber-500' />
+                  <span>
+                    <strong>Dynamic 302 Redirection Active:</strong> This QR matrix encodes your dynamic link (<code>{getShortUrl(shortCode)}</code>). Scans route through the backend engine for live analytics, and you can edit the destination URL anytime.
+                  </span>
+                </div>
+              ) : (
+                <div className='flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground'>
+                  <CheckCircle2 className='size-4 shrink-0 text-primary' />
+                  <span>
+                    <strong>100% Offline Static Guarantee:</strong> Static QR codes store data directly inside the visual matrix. They never expire and function forever without internet.
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>

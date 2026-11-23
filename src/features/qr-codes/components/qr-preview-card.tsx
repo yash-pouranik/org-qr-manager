@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import QRCodeStyling from 'qr-code-styling'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 import {
   Download,
@@ -10,15 +11,22 @@ import {
   Copy,
   Check,
   FileCode,
+  Zap,
+  ArrowRight,
+  ExternalLink,
 } from 'lucide-react'
 import { QrStyleOptions, QrContentType } from '../types'
 import { QrStandeeDialog } from './qr-standee-dialog'
+import { getShortUrl } from '@/lib/api-client'
 
 interface QrPreviewCardProps {
   serializedData: string
   contentType: QrContentType
   styleOptions: QrStyleOptions
   qrName?: string
+  category?: 'dynamic' | 'static'
+  shortCode?: string
+  shortUrl?: string
 }
 
 export function QrPreviewCard({
@@ -26,12 +34,28 @@ export function QrPreviewCard({
   contentType,
   styleOptions,
   qrName = 'organization-qr',
+  category = 'static',
+  shortCode,
+  shortUrl,
 }: QrPreviewCardProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const qrCodeRef = useRef<QRCodeStyling | null>(null)
-  const [copied, setCopied] = useState(false)
+  const [copiedPayload, setCopiedPayload] = useState(false)
+  const [copiedShort, setCopiedShort] = useState(false)
   const [standeeOpen, setStandeeOpen] = useState(false)
   const [previewImageSrc, setPreviewImageSrc] = useState<string>('')
+
+  const isDynamic = category === 'dynamic'
+  const resolvedShortUrl = isDynamic
+    ? shortUrl || (shortCode ? getShortUrl(shortCode) : getShortUrl('sample'))
+    : ''
+
+  // CRITICAL ARCHITECTURE RULE:
+  // Dynamic QR MUST encode the dynamic short redirect URL (e.g. https://qr.gitaforlife.net/r/:shortCode)
+  // Static QR directly encodes the raw destination payload.
+  const qrDataToEncode = isDynamic
+    ? resolvedShortUrl
+    : serializedData || 'https://organization.local'
 
   // Initialize or update QRCodeStyling instance
   useEffect(() => {
@@ -53,7 +77,7 @@ export function QrPreviewCard({
     const options: any = {
       width: 280,
       height: 280,
-      data: serializedData || 'https://organization.local',
+      data: qrDataToEncode,
       margin: 8,
       qrOptions: {
         typeNumber: 0,
@@ -103,7 +127,7 @@ export function QrPreviewCard({
         setPreviewImageSrc(url)
       }
     }).catch(() => {})
-  }, [serializedData, styleOptions])
+  }, [qrDataToEncode, styleOptions])
 
   const handleDownloadPng = async () => {
     if (!qrCodeRef.current) return
@@ -133,9 +157,17 @@ export function QrPreviewCard({
 
   const handleCopyPayload = () => {
     navigator.clipboard.writeText(serializedData)
-    setCopied(true)
-    toast.success('QR payload copied to clipboard!')
-    setTimeout(() => setCopied(false), 2000)
+    setCopiedPayload(true)
+    toast.success('Target payload copied to clipboard!')
+    setTimeout(() => setCopiedPayload(false), 2000)
+  }
+
+  const handleCopyShortLink = () => {
+    if (!resolvedShortUrl) return
+    navigator.clipboard.writeText(resolvedShortUrl)
+    setCopiedShort(true)
+    toast.success('Dynamic short redirect link copied!')
+    setTimeout(() => setCopiedShort(false), 2000)
   }
 
   return (
@@ -147,9 +179,15 @@ export function QrPreviewCard({
               <Eye className='size-4 text-primary' />
               Live QR Preview
             </CardTitle>
-            <span className='rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400'>
-              Ready to Scan
-            </span>
+            {isDynamic ? (
+              <Badge className='text-[10px] gap-1 bg-emerald-600 dark:bg-emerald-700 text-white hover:bg-emerald-600'>
+                <Zap className='size-2.5 text-amber-300' /> Dynamic Tracked
+              </Badge>
+            ) : (
+              <Badge variant='secondary' className='text-[10px]'>
+                Direct Static
+              </Badge>
+            )}
           </div>
         </CardHeader>
 
@@ -201,30 +239,69 @@ export function QrPreviewCard({
                   color: styleOptions.frameTextColor,
                 }}
               >
-                {styleOptions.frameText || 'SCAN TO PAY / SEVA'}
+                {styleOptions.frameText || (isDynamic ? 'SCAN TO REDIRECT' : 'SCAN TO PAY / ACCESS')}
               </div>
             )}
           </div>
 
-          {/* Serialized Content Monospace Box */}
-          <div className='mt-4 w-full rounded-lg border border-border/60 bg-muted/30 p-2.5 text-start'>
-            <div className='flex items-center justify-between text-[10px] text-muted-foreground mb-1'>
-              <span className='font-semibold uppercase tracking-wider'>
-                Payload ({contentType.toUpperCase()})
-              </span>
-              <button
-                type='button'
-                onClick={handleCopyPayload}
-                className='flex items-center gap-1 hover:text-foreground cursor-pointer'
-              >
-                {copied ? <Check className='size-3 text-emerald-600' /> : <Copy className='size-3' />}
-                <span>{copied ? 'Copied' : 'Copy'}</span>
-              </button>
+          {/* Encoded Data Display Box */}
+          {isDynamic ? (
+            <div className='mt-4 w-full rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-start space-y-2'>
+              <div className='flex items-center justify-between text-[10px]'>
+                <span className='font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300 flex items-center gap-1'>
+                  <Zap className='size-3 text-amber-500' /> Encoded Dynamic Short Link
+                </span>
+                <div className='flex items-center gap-2'>
+                  <a
+                    href={resolvedShortUrl}
+                    target='_blank'
+                    rel='noreferrer'
+                    className='text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5'
+                    title='Test link in new tab'
+                  >
+                    <span>Test</span>
+                    <ExternalLink className='size-2.5' />
+                  </a>
+                  <button
+                    type='button'
+                    onClick={handleCopyShortLink}
+                    className='flex items-center gap-1 text-muted-foreground hover:text-foreground cursor-pointer'
+                  >
+                    {copiedShort ? <Check className='size-3 text-emerald-600' /> : <Copy className='size-3' />}
+                    <span>{copiedShort ? 'Copied' : 'Copy'}</span>
+                  </button>
+                </div>
+              </div>
+              <p className='truncate font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-300 select-all bg-background/90 p-1.5 rounded border border-emerald-500/20'>
+                {resolvedShortUrl}
+              </p>
+              <div className='flex items-center gap-1 text-[11px] text-muted-foreground pt-0.5 truncate'>
+                <ArrowRight className='size-3 shrink-0 text-muted-foreground' />
+                <span className='truncate'>
+                  302 Redirect Target: <strong className='font-mono text-foreground font-normal'>{serializedData}</strong>
+                </span>
+              </div>
             </div>
-            <p className='truncate font-mono text-[11px] text-foreground select-all'>
-              {serializedData}
-            </p>
-          </div>
+          ) : (
+            <div className='mt-4 w-full rounded-lg border border-border/60 bg-muted/30 p-2.5 text-start'>
+              <div className='flex items-center justify-between text-[10px] text-muted-foreground mb-1'>
+                <span className='font-semibold uppercase tracking-wider'>
+                  Direct Payload ({contentType.toUpperCase()})
+                </span>
+                <button
+                  type='button'
+                  onClick={handleCopyPayload}
+                  className='flex items-center gap-1 hover:text-foreground cursor-pointer'
+                >
+                  {copiedPayload ? <Check className='size-3 text-emerald-600' /> : <Copy className='size-3' />}
+                  <span>{copiedPayload ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+              <p className='truncate font-mono text-[11px] text-foreground select-all'>
+                {serializedData}
+              </p>
+            </div>
+          )}
         </CardContent>
 
         <CardFooter className='flex flex-col gap-2 border-t border-border/60 pt-4'>
@@ -266,3 +343,4 @@ export function QrPreviewCard({
     </>
   )
 }
+

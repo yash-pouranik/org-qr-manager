@@ -15,6 +15,7 @@ import {
   Smartphone,
   Globe,
   Radio,
+  Eye,
 } from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
@@ -48,6 +49,8 @@ import { departmentService } from '@/services/department-service'
 import { useAuthUser } from '@/context/auth-context'
 import { QrEditDestinationDialog } from './components/qr-edit-destination-dialog'
 import { QrTrashDialog } from './components/qr-trash-dialog'
+import { QrViewDialog } from './components/qr-view-dialog'
+import { getShortUrl } from '@/lib/api-client'
 
 export function QrCodesPage() {
   const queryClient = useQueryClient()
@@ -75,6 +78,7 @@ export function QrCodesPage() {
   }, [isSuperAdmin, assignedDepartmentId])
 
   // Dialog states
+  const [viewDialogOpen, setViewDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [trashDialogOpen, setTrashDialogOpen] = useState(false)
   const [isPermanentDelete, setIsPermanentDelete] = useState(false)
@@ -195,6 +199,11 @@ export function QrCodesPage() {
     } catch {
       toast.error('Failed to restore QR code')
     }
+  }
+
+  const openViewDialog = (item: QrCodeItem) => {
+    setSelectedQr(item)
+    setViewDialogOpen(true)
   }
 
   const openEditDestination = (item: QrCodeItem) => {
@@ -428,21 +437,30 @@ export function QrCodesPage() {
                   <CardContent className='flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between'>
                     {/* Left: Thumbnail & Main Info */}
                     <div className='flex items-start gap-4'>
-                      <div className='relative flex size-12 shrink-0 items-center justify-center rounded-lg border border-border/80 bg-background shadow-xs'>
-                        <QrCode className='size-6 text-primary' />
+                      <button
+                        type='button'
+                        onClick={() => openViewDialog(item)}
+                        className='group relative flex size-12 shrink-0 items-center justify-center rounded-lg border border-border/80 bg-background shadow-xs hover:border-primary/60 hover:bg-muted/40 transition-all cursor-pointer'
+                        title='Click to View & Download QR'
+                      >
+                        <QrCode className='size-6 text-primary group-hover:scale-105 transition-transform' />
                         {isDynamic && (
                           <span
                             className='absolute -top-1 -right-1 flex size-2.5 rounded-full bg-emerald-500 ring-2 ring-background'
                             title='Dynamic Active'
                           />
                         )}
-                      </div>
+                      </button>
 
                       <div className='space-y-1 min-w-0'>
                         <div className='flex flex-wrap items-center gap-2'>
-                          <h4 className='font-semibold text-sm text-foreground truncate max-w-xs sm:max-w-md'>
+                          <button
+                            type='button'
+                            onClick={() => openViewDialog(item)}
+                            className='font-semibold text-sm text-foreground hover:text-primary transition-colors truncate max-w-xs sm:max-w-md text-start cursor-pointer'
+                          >
                             {item.name}
-                          </h4>
+                          </button>
                           <Badge
                             variant={isDynamic ? 'default' : 'secondary'}
                             className='text-[10px] font-normal uppercase tracking-wider'
@@ -461,24 +479,36 @@ export function QrCodesPage() {
                             {item.departmentName || 'General'}
                           </span>
 
-                          {isDynamic && item.shortUrl && (
-                            <div className='flex items-center gap-1 text-accent font-mono'>
-                              <span>{item.shortUrl}</span>
-                              <button
-                                onClick={() => handleCopyLink(item.shortUrl!, item.id)}
-                                className='p-0.5 hover:text-foreground'
-                                title='Copy Short Link'
-                              >
-                                {copiedId === item.id ? (
-                                  <Check className='size-3 text-emerald-600' />
-                                ) : (
-                                  <Copy className='size-3' />
-                                )}
-                              </button>
+                          {isDynamic && (
+                            <div className='flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-mono font-medium'>
+                              {(() => {
+                                const resolvedLink =
+                                  item.shortUrl ||
+                                  (item.shortCode ? getShortUrl(item.shortCode) : '')
+                                return (
+                                  <>
+                                    <span className='truncate max-w-[220px]'>{resolvedLink}</span>
+                                    {resolvedLink && (
+                                      <button
+                                        type='button'
+                                        onClick={() => handleCopyLink(resolvedLink, item.id)}
+                                        className='p-0.5 hover:text-foreground cursor-pointer'
+                                        title='Copy Short Link'
+                                      >
+                                        {copiedId === item.id ? (
+                                          <Check className='size-3 text-emerald-600' />
+                                        ) : (
+                                          <Copy className='size-3' />
+                                        )}
+                                      </button>
+                                    )}
+                                  </>
+                                )
+                              })()}
                             </div>
                           )}
 
-                          <span className='truncate max-w-[200px] text-muted-foreground/80'>
+                          <span className='truncate max-w-[200px] text-muted-foreground/80' title={item.destinationUrl}>
                             → {item.destinationUrl}
                           </span>
                         </div>
@@ -536,6 +566,15 @@ export function QrCodesPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align='end' className='w-48'>
+                          {!isTrash && (
+                            <DropdownMenuItem
+                              onClick={() => openViewDialog(item)}
+                              className='gap-2 text-xs font-medium text-foreground'
+                            >
+                              <Eye className='size-3.5 text-primary' /> View QR & Download
+                            </DropdownMenuItem>
+                          )}
+
                           {isDynamic && !isTrash && canEditThisItem && (
                             <DropdownMenuItem
                               onClick={() => openEditDestination(item)}
@@ -549,14 +588,14 @@ export function QrCodesPage() {
                             <DropdownMenuItem
                               onClick={() => {
                                 const url =
-                                  isDynamic && item.shortUrl
-                                    ? item.shortUrl
+                                  isDynamic
+                                    ? item.shortUrl || (item.shortCode ? getShortUrl(item.shortCode) : item.destinationUrl)
                                     : item.destinationUrl
                                 window.open(url, '_blank')
                               }}
                               className='gap-2 text-xs'
                             >
-                              <ExternalLink className='size-3.5' /> Open Destination
+                              <ExternalLink className='size-3.5' /> {isDynamic ? 'Test Redirect' : 'Open Destination'}
                             </DropdownMenuItem>
                           )}
 
@@ -606,6 +645,13 @@ export function QrCodesPage() {
         )}
 
         {/* Dialogs */}
+        <QrViewDialog
+          open={viewDialogOpen}
+          onOpenChange={setViewDialogOpen}
+          qrItem={selectedQr}
+          onEditDestination={openEditDestination}
+        />
+
         <QrEditDestinationDialog
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}

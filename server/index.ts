@@ -1073,6 +1073,9 @@ function getPublicBaseUrl(req: express.Request): string {
     return process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '');
   }
   const host = req.get('host') || `localhost:${PORT}`;
+  if (host.includes('tools.gitaforlife.net') || host.includes('qr.gitaforlife.net') || host.includes('gitaforlife.net')) {
+    return 'https://qr.gitaforlife.net';
+  }
   const proto = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
   return `${proto}://${host}`.replace(/\/$/, '');
 }
@@ -1093,7 +1096,7 @@ app.get('/api/admin/qr-codes', async (req, res) => {
       if (Array.isArray(liveQrs)) {
         results = liveQrs.map((q: any) => {
           let resolvedShortUrl = q.short_url;
-          if (!resolvedShortUrl || resolvedShortUrl.includes('localhost')) {
+          if (!resolvedShortUrl || resolvedShortUrl.includes('localhost') || resolvedShortUrl.includes('tools.gitaforlife.net')) {
             resolvedShortUrl = `${baseUrl}/r/${q.short_code}`;
           }
           return {
@@ -1112,6 +1115,7 @@ app.get('/api/admin/qr-codes', async (req, res) => {
             last_scanned_at: q.last_scanned_at || null,
             isDeleted: Boolean(q.isDeleted || q.status === 'archived'),
             deletedAt: q.deletedAt || null,
+            style_options: q.style_options || null,
             donation_config: q.donation_config,
             created_at: q.created_at || q.createdAt || new Date().toISOString(),
             updated_at: q.updated_at || q.updatedAt || new Date().toISOString(),
@@ -1233,6 +1237,7 @@ app.post('/api/admin/qr-codes', async (req, res) => {
         status: 'active',
         total_scans: 0,
         unique_visitors: 0,
+        style_options: styleOptions || null,
         donation_config: formattedDonationConfig,
       };
 

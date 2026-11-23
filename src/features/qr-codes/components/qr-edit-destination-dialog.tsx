@@ -11,8 +11,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Link2, Sparkles } from 'lucide-react'
+import { Link2, Sparkles, Zap, ExternalLink, Copy, Check } from 'lucide-react'
 import { QrCodeItem, qrService } from '@/services/qr-service'
+import { getShortUrl } from '@/lib/api-client'
 
 interface QrEditDestinationDialogProps {
   open: boolean
@@ -30,6 +31,7 @@ export function QrEditDestinationDialog({
   const [destinationUrl, setDestinationUrl] = useState('')
   const [name, setName] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     if (qrItem) {
@@ -41,6 +43,17 @@ export function QrEditDestinationDialog({
   if (!qrItem) return null
 
   const isDynamic = qrItem.category === 'dynamic'
+  const dynamicLink = isDynamic
+    ? qrItem.shortUrl || (qrItem.shortCode ? getShortUrl(qrItem.shortCode) : '')
+    : ''
+
+  const handleCopyLink = () => {
+    if (!dynamicLink) return
+    navigator.clipboard.writeText(dynamicLink)
+    setCopied(true)
+    toast.success('Dynamic short link copied!')
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -79,11 +92,38 @@ export function QrEditDestinationDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className='space-y-4'>
-          {isDynamic && qrItem.shortUrl && (
-            <div className='rounded-lg bg-muted/40 p-3 space-y-1 text-xs'>
-              <span className='text-muted-foreground'>Public Short URL:</span>
-              <p className='font-mono font-medium text-foreground select-all'>
-                {qrItem.shortUrl}
+          {isDynamic && dynamicLink && (
+            <div className='rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 space-y-1.5 text-xs'>
+              <div className='flex items-center justify-between'>
+                <span className='font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-1 text-[11px]'>
+                  <Zap className='size-3 text-amber-500' /> Permanent Dynamic QR Link:
+                </span>
+                <div className='flex items-center gap-2'>
+                  <a
+                    href={dynamicLink}
+                    target='_blank'
+                    rel='noreferrer'
+                    className='text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5'
+                    title='Test link in new tab'
+                  >
+                    <span>Test</span>
+                    <ExternalLink className='size-2.5' />
+                  </a>
+                  <button
+                    type='button'
+                    onClick={handleCopyLink}
+                    className='text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5'
+                  >
+                    {copied ? <Check className='size-2.5 text-emerald-600' /> : <Copy className='size-2.5' />}
+                    <span>{copied ? 'Copied' : 'Copy'}</span>
+                  </button>
+                </div>
+              </div>
+              <p className='font-mono font-medium text-emerald-700 dark:text-emerald-300 select-all bg-background/80 p-1.5 rounded border border-emerald-500/20'>
+                {dynamicLink}
+              </p>
+              <p className='text-[10px] text-muted-foreground'>
+                The QR image encodes this exact link and never changes.
               </p>
             </div>
           )}
@@ -138,3 +178,4 @@ export function QrEditDestinationDialog({
     </Dialog>
   )
 }
+
