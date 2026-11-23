@@ -45,9 +45,40 @@ export const serverUrClient = new UrBackendClient({
   baseUrl: URBACKEND_BASE_URL,
 });
 
+const ALLOWED_ORIGINS = [
+  'https://tools.gitaforlife.net',
+  'https://qr.gitaforlife.net',
+  'https://gitaforlife.net',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:3001',
+];
+
+if (process.env.ALLOWED_ORIGINS) {
+  const extra = process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim());
+  ALLOWED_ORIGINS.push(...extra);
+}
+
 app.use(
   cors({
-    origin: true,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile scanners, server-to-server, or direct browser navigations)
+      if (!origin) return callback(null, true);
+
+      // Whitelist tools.gitaforlife.net, qr.gitaforlife.net, and subdomains of gitaforlife.net
+      const isAllowed =
+        ALLOWED_ORIGINS.includes(origin) ||
+        ALLOWED_ORIGINS.some((allowed) => allowed.toLowerCase() === origin.toLowerCase()) ||
+        /^https:\/\/([a-z0-9-]+\.)?gitaforlife\.net$/i.test(origin) ||
+        /^http:\/\/localhost(:[0-9]+)?$/i.test(origin);
+
+      if (isAllowed) {
+        return callback(null, true);
+      }
+
+      console.warn(`[CORS Blocked] Unauthorized origin attempted API access: ${origin}`);
+      return callback(new Error(`CORS policy: Origin ${origin} is not allowed.`));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'Accept', 'Origin', 'X-Requested-With'],
